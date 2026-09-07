@@ -552,6 +552,40 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
         },
         apiKey: config.apiToken,
         sessionAffinity,
+        // DEBUG-TEMP: log non-2xx responses from Workers AI (remove after diagnosis)
+        fetch: (async (url: string | URL | Request, init?: RequestInit) => {
+          // LOCAL-PATCH: Workers AI's OpenAI-compat schema only accepts string `content` on
+          // messages (no content-part arrays, no null). Flatten before sending.
+          if (init && typeof init.body === "string" && String(url).endsWith("/chat/completions")) {
+            try {
+              const payload = JSON.parse(init.body);
+              if (Array.isArray(payload.messages)) {
+                for (const m of payload.messages) {
+                  if (Array.isArray(m.content)) {
+                    m.content = m.content
+                        .map((p: any) => typeof p === "string" ? p : (p?.text ?? ""))
+                        .join("");
+                  } else if (m.content === null || m.content === undefined) {
+                    m.content = "";
+                  }
+                }
+                init = { ...init, body: JSON.stringify(payload) };
+              }
+            } catch {}
+          }
+          const r = await fetch(url, init);
+          if (!r.ok) {
+            let t = "";
+            try { t = await r.clone().text(); } catch {}
+            const body = typeof init?.body === "string" ? init.body : String(init?.body);
+            console.log("[WAI DEBUG] status=" + r.status + " url=" + String(url) +
+                " | response=" + t.slice(0, 2000) +
+                " | request(head)=" + body.slice(0, 1500) +
+                " | request(tail)=" + body.slice(-2500) +
+                " | request length=" + body.length);
+          }
+          return r;
+        }) as FetchFunction,
       });
     }
     case "google":

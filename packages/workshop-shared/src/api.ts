@@ -1200,6 +1200,14 @@ const SUGGESTED_MODEL_CATALOG = {
       name: "DeepSeek V4 Pro 0813 (Workers AI)", contextWindow: 1048576,
       outputLimit: WORKERS_AI_OUTPUT_LIMIT,
     },
+    // LOCAL-PATCH: free-tier-eligible models with correct context/output limits (the default
+    // 32768 outputLimit leaves no room for input on 32K-context models -> HTTP 400).
+    "@cf/openai/gpt-oss-120b": {
+      name: "GPT-OSS 120B (Workers AI)", contextWindow: 128000, outputLimit: 8192,
+    },
+    "@cf/qwen/qwen3-30b-a3b-fp8": {
+      name: "Qwen3 30B A3B (Workers AI)", contextWindow: 32768, outputLimit: 8192,
+    },
   },
   "anthropic": {
     // TODO: Include Fable -- but we need an admin option to disable it, since many orgs don't
