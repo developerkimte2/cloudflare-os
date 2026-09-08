@@ -685,6 +685,11 @@
           "name": "SALES_AI_API_KEY",
           "text": "$SECRET(SALES_AI_API_KEY)",
           "type": "secret_text"
+        },
+        {
+          "name": "SALES_SLACK_BOT_TOKEN",
+          "text": "$SECRET(SALES_SLACK_BOT_TOKEN)",
+          "type": "secret_text"
         }
       ],
       "compatibilityDate": "2026-09-04",
@@ -702,6 +707,17 @@
             "Choose the provider in the worker's SALES_AI_PROVIDER var (anthropic / workers-ai / ollama / openai-compat) and the model in SALES_AI_MODEL.",
             "For workers-ai, also set SALES_AI_ACCOUNT_ID (or SALES_AI_BASE_URL) so the OpenAI-compatible endpoint can be built.",
             "Paste the key here. It is stored as a secret and never shown again."
+          ]
+        },
+        {
+          "help": "A Slack bot token with the chat:write scope, used only by the admin-only \"テスト送信\" test-send button on the Sales OS settings page. Leave empty to skip Slack for now.",
+          "kind": "secret",
+          "label": "Slack bot token (optional)",
+          "name": "SALES_SLACK_BOT_TOKEN",
+          "setupSteps": [
+            "Create a Slack app (or reuse one) with the chat:write scope and install it to the workspace.",
+            "Set the worker's SALES_SLACK_CHANNEL var to the channel id or #name to post to.",
+            "Paste the bot token here. It is stored as a secret and never shown again."
           ]
         }
       ],

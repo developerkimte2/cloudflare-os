@@ -487,6 +487,7 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   getConfig(): Promise<ConfigDto> { return this.core.getConfig(this.caller); }
   updateConfig(patch: Partial<SalesConfig>): Promise<ConfigDto> { return this.core.updateConfig(this.caller, patch); }
   listAudit(entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]> { return this.core.listAudit(this.caller, entityType, entityId, limit); }
+  sendSlackTest(): Promise<void> { return this.core.sendSlackTest(this.caller); }
 }
 
 // ---------------------------------------------------------------------------------------------

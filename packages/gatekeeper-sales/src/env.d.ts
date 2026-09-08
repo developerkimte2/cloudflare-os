@@ -16,6 +16,10 @@ declare namespace Cloudflare {
     SALES_AI_ACCOUNT_ID?: string;
     /** Injected by run-dev-server / deploy: public base URL of this worker. Unused today. */
     BASE_URL?: string;
+    /** Secret: Slack bot token (`chat:write` scope). Notification outlet only (設計書 §20). */
+    SALES_SLACK_BOT_TOKEN?: string;
+    /** Channel id or #name `chat.postMessage` sends to. Not a secret. */
+    SALES_SLACK_CHANNEL?: string;
   }
 
   interface GlobalProps {

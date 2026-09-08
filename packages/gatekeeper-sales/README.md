@@ -49,8 +49,11 @@ Vars (in `wrangler.jsonc`, override per deployment):
 | `SALES_AI_MODEL` | e.g. `claude-sonnet-5`, `@cf/openai/gpt-oss-120b`, `qwen3-coder:30b` |
 | `SALES_AI_BASE_URL` | Optional. Anthropic root or AI Gateway URL; OpenAI-compatible root for the others. |
 | `SALES_AI_ACCOUNT_ID` | Workers AI: Cloudflare account id (builds the `/ai/v1` base URL). |
+| `SALES_SLACK_CHANNEL` | Optional. Channel id or `#name` for the Slack "テスト送信" button (設計書 §20). No default. |
 
-Secret: `SALES_AI_API_KEY` (`wrangler secret put SALES_AI_API_KEY`; not needed for Ollama).
+Secrets: `SALES_AI_API_KEY` (`wrangler secret put SALES_AI_API_KEY`; not needed for Ollama);
+`SALES_SLACK_BOT_TOKEN` (a Slack bot token with the `chat:write` scope — optional, only needed to use
+the Slack test-send button under Sales OS → 設定).
 
 Local dev: create `packages/gatekeeper-sales/.dev.vars` (gitignored):
 
@@ -92,5 +95,7 @@ checkouts) — `__tests__/types-copy.test.ts` enforces it.
 
 ## Not in Phase 0
 
-Calendar / Gmail / Slack / voice integrations, Manager digests, R2 raw storage. See
-`plans/sales-os-phase0.md` §4 and the design document's phase plan.
+Calendar / Gmail integrations, voice, Manager digests, R2 raw storage. See `plans/sales-os-phase0.md`
+§4 and the design document's phase plan. Slack has only the sending foundation (`src/slack.ts`,
+`chat.postMessage`, an admin "テスト送信" button) — no automatic triggers, scheduling, or Notification
+Fatigue dedup yet (設計書 §20 の通知エンジンは Phase 1)。

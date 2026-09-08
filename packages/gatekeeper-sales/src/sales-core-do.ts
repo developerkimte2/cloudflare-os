@@ -20,6 +20,7 @@ import {
 } from "@gadgets/sales-core";
 import { buildLlm, describeAi } from "./llm.js";
 import type { WhoAmI } from "./management-types.js";
+import { describeSlack, postToSlack } from "./slack.js";
 
 export const IDENTITY_PROVIDER = "cfos";
 export const VENDOR_ID = "sales";
@@ -79,7 +80,14 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
       isAdmin: caller.isAdmin === true,
       firstUser: this.#service.repo.listUsers().length === 0,
       ai: describeAi(this.env),
+      slack: describeSlack(this.env),
     };
+  }
+
+  /** ADMIN only. See `SalesManagementApi.sendSlackTest`. */
+  async sendSlackTest(caller: Caller): Promise<void> {
+    if (!caller.isAdmin) throw new Error("Slack のテスト送信は管理者のみ実行できます");
+    await postToSlack(this.env, "Sales OS からのテスト通知です。この文言が届けば連携は正常です。");
   }
 
   async register(caller: Caller, input: RegisterIdentityInput): Promise<UserDto> {

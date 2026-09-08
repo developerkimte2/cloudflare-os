@@ -30,6 +30,8 @@ export interface WhoAmI {
   firstUser: boolean;
   /** Configured AI provider/model, for display and troubleshooting. */
   ai: { provider: string; model: string; configured: boolean };
+  /** Whether Slack (`chat.postMessage`) is configured, and which channel — never the token. */
+  slack: { configured: boolean; channel?: string };
 }
 
 export interface SalesManagementApi {
@@ -64,4 +66,7 @@ export interface SalesManagementApi {
   getConfig(): Promise<ConfigDto>;
   updateConfig(patch: Partial<SalesConfig>): Promise<ConfigDto>;
   listAudit(entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]>;
+
+  /** ADMIN only. Sends a fixed test message to the configured Slack channel; throws if unconfigured. */
+  sendSlackTest(): Promise<void>;
 }

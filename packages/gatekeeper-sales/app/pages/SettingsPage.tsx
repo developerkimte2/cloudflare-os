@@ -1,7 +1,8 @@
+import { useKumoToastManager } from "@cloudflare/kumo";
 import type { RpcStub } from "capnweb";
 import { useEffect, useState } from "react";
 import type { ConfigDto, SalesManagementApi } from "../../src/management-types";
-import { useApiAction, useAsyncData } from "../api";
+import { errorMessage, useApiAction, useAsyncData } from "../api";
 
 /** Percentage-displayed confidence thresholds (設計書 §16). Stored as 0..1 fractions. */
 const CONFIDENCE_FIELDS: { key: keyof ConfigDto; label: string; hint: string }[] = [
@@ -26,13 +27,31 @@ export default function SettingsPage({
   who,
 }: {
   api: RpcStub<SalesManagementApi>;
-  who: { isAdmin: boolean; ai: { provider: string; model: string; configured: boolean } };
+  who: {
+    isAdmin: boolean;
+    ai: { provider: string; model: string; configured: boolean };
+    slack: { configured: boolean; channel?: string };
+  };
 }) {
   const runAction = useApiAction();
+  const toasts = useKumoToastManager();
   const { loading, error, data, reload } = useAsyncData(() => api.getConfig(), [api]);
   const [form, setForm] = useState<ConfigDto>();
   const [phaseLabelsText, setPhaseLabelsText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sendingSlackTest, setSendingSlackTest] = useState(false);
+
+  const sendSlackTest = async () => {
+    setSendingSlackTest(true);
+    try {
+      await api.sendSlackTest();
+      toasts.add({ title: "Slack にテスト送信しました", description: "チャンネルを確認してください。", variant: "success" });
+    } catch (caught) {
+      toasts.add({ title: "Slack へのテスト送信に失敗しました", description: errorMessage(caught), variant: "error" });
+    } finally {
+      setSendingSlackTest(false);
+    }
+  };
 
   useEffect(() => {
     if (data) {
@@ -102,6 +121,28 @@ export default function SettingsPage({
         <p className="mt-2 text-xs text-kumo-inactive">
           AIプロバイダの切り替えは wrangler.jsonc / secrets の変更が必要です（この画面では変更できません）。
         </p>
+      </section>
+
+      <section className="mt-3 rounded-lg border border-kumo-line bg-kumo-control px-3.5 py-3">
+        <p className="text-xs font-medium text-kumo-subtle">Slack 連携</p>
+        {who.slack.configured ? (
+          <p className="mt-1 text-sm text-kumo-default">送信先: {who.slack.channel}</p>
+        ) : (
+          <p className="mt-1 text-xs text-kumo-danger">
+            未設定です。wrangler の SALES_SLACK_BOT_TOKEN（シークレット）と SALES_SLACK_CHANNEL を設定してください。
+          </p>
+        )}
+        <p className="mt-2 text-xs text-kumo-inactive">
+          現時点では通知の自動送信はなく、この土台の疎通確認のみです（設計書 §20 の通知エンジンは今後の対応）。
+        </p>
+        <button
+          type="button"
+          disabled={sendingSlackTest}
+          onClick={() => void sendSlackTest()}
+          className="press mt-2.5 rounded-lg border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint disabled:opacity-50"
+        >
+          {sendingSlackTest ? "送信中…" : "テスト送信"}
+        </button>
       </section>
 
       <Section title="確信度のしきい値">
