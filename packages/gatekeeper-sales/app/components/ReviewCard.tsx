@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReviewDto } from "../../src/management-types";
-import { localInputToIso } from "../format";
+import { isoToLocalInput, localInputToIso } from "../format";
 import { REVIEW_TYPE_LABEL } from "../labels";
 import { Badge } from "./Badges";
 import { ConfirmInline } from "./ConfirmInline";
@@ -78,8 +78,12 @@ function OptionControl({
   busy: boolean;
   onChoose: (input?: Record<string, unknown>) => void;
 }) {
-  const [local, setLocal] = useState("");
-  const value = option.value as { needsInput?: string } | undefined;
+  const value = option.value as { needsInput?: string; suggestedDueAt?: string } | undefined;
+  const [local, setLocal] = useState(
+    value?.needsInput === "dueAt" && value.suggestedDueAt
+      ? isoToLocalInput(value.suggestedDueAt, timezone)
+      : "",
+  );
 
   if (value?.needsInput === "dueAt") {
     return (

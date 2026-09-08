@@ -9,6 +9,11 @@ import type {
 import { clamp01, isIsoDateTime } from "../domain/util.js";
 import type { SalesConfig } from "./config.js";
 
+/** Japanese labels for review/question text (§ FB_20260908: no raw English enums in front of users). */
+const LIFECYCLE_LABEL_JA: Record<LifecycleState, string> = {
+  OPEN: "進行中", WON: "受注", LOST: "失注", ON_HOLD: "保留", CLOSED: "終了",
+};
+
 export interface ReviewTrigger {
   type: ReviewItemType;
   question: string;
@@ -44,19 +49,22 @@ export function deriveState(
     });
   } else if (s.lifecycle_state === "ON_HOLD" || s.lifecycle_state === "CLOSED") {
     if (s.confidence >= config.stateAutoConfidence) proposal.lifecycleState = s.lifecycle_state;
-    else reviews.push({
-      type: "STATE_AMBIGUOUS",
-      question: `AI は本件を ${s.lifecycle_state} と判断しました (confidence ${s.confidence.toFixed(2)})。適用しますか？`,
-      options: [
-        { id: "confirm", label: `${s.lifecycle_state} にする`, value: { lifecycleState: s.lifecycle_state } },
-        { id: "keep", label: "現状維持", value: {} },
-      ],
-    });
+    else {
+      const label = LIFECYCLE_LABEL_JA[s.lifecycle_state];
+      reviews.push({
+        type: "STATE_AMBIGUOUS",
+        question: `AI は本件を「${label}」と判断しましたが、自信がありません。適用しますか？`,
+        options: [
+          { id: "confirm", label: `「${label}」にする`, value: { lifecycleState: s.lifecycle_state } },
+          { id: "keep", label: "現状維持", value: {} },
+        ],
+      });
+    }
   } else if (current && current.lifecycleState !== "OPEN" && s.lifecycle_state === "OPEN") {
     // Re-opening a closed opportunity is also a human call.
     reviews.push({
       type: "STATE_AMBIGUOUS",
-      question: `${current.lifecycleState} の案件に新しい動きがありました。OPEN に戻しますか？`,
+      question: `「${LIFECYCLE_LABEL_JA[current.lifecycleState]}」の案件に新しい動きがありました。OPEN に戻しますか？`,
       options: [
         { id: "reopen", label: "OPEN に戻す", value: { lifecycleState: "OPEN" } },
         { id: "keep", label: "現状維持", value: {} },

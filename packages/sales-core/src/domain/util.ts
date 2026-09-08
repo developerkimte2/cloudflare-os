@@ -85,6 +85,15 @@ export function formatLocal(iso: string, timeZone: string): string {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")} (${get("weekday")}, ${timeZone})`;
 }
 
+/** Human-facing Japanese rendering for review/question text, e.g. "9月15日(火) 18:00". */
+export function formatDateTimeJa(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone, hourCycle: "h23",
+    month: "long", day: "numeric", weekday: "short",
+    hour: "2-digit", minute: "2-digit",
+  }).format(new Date(iso));
+}
+
 /** Calendar date (`YYYY-MM-DD`) of an instant in a timezone. */
 export function localDate(iso: string, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

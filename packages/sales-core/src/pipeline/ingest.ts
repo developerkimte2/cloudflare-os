@@ -19,7 +19,8 @@ import type {
   SourceApplication, SourceDocument, SourceType, User,
 } from "../domain/types.js";
 import {
-  canonicalizeText, isIsoDateTime, newId, normalizeEmail, normalizeName, nowIso, sha256Hex,
+  canonicalizeText, formatDateTimeJa, isIsoDateTime, newId, normalizeEmail, normalizeName, nowIso,
+  sha256Hex,
 } from "../domain/util.js";
 import {
   acceptDueAt, deriveAmount, derivePriority, deriveState, type ReviewTrigger,
@@ -402,12 +403,13 @@ function applyExtraction(
     ctx.repo.insertCommitment(commitment);
     commitmentIds.push(commitment.id);
     if (c.due_at && !dueAt) {
+      const dueAtJa = formatDateTimeJa(c.due_at, submitter.timezone);
       review({
         type: "DATE_AMBIGUOUS",
-        question: `約束「${c.description}」の期限が曖昧です (AI の解釈: ${c.due_at}, confidence ${c.due_confidence.toFixed(2)})。期限を確定しますか？`,
+        question: `約束「${c.description}」の期限がはっきりしません。AI は「${dueAtJa}」と読み取りましたが、自信がありません。期限を確定しますか？`,
         options: [
-          { id: "accept", label: `AI の解釈 (${c.due_at}) を採用`, value: { dueAt: c.due_at } },
-          { id: "set", label: "期限を入力する", value: { needsInput: "dueAt" } },
+          { id: "accept", label: `${dueAtJa} にする`, value: { dueAt: c.due_at } },
+          { id: "set", label: "期限を入力する", value: { needsInput: "dueAt", suggestedDueAt: c.due_at } },
           { id: "none", label: "期限なしのまま", value: {} },
         ],
       }, "commitment", commitment.id);
