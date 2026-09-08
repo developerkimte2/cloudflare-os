@@ -4,6 +4,7 @@
  * it rather than imported by name.
  */
 import type {
+  AuditLog,
   Commitment,
   NextAction,
   OpportunityDetail,
@@ -19,6 +20,9 @@ type RiskLevel = OpportunitySummary["riskLevel"];
 type ReviewItemType = ReviewDto["type"];
 type ActivityType = OpportunityDetail["activities"][number]["type"];
 type UserRole = UserDto["role"];
+type AIDecisionType = OpportunityDetail["decisions"][number]["decisionType"];
+type AIDecisionStatus = OpportunityDetail["decisions"][number]["status"];
+type ActorType = AuditLog["actorType"];
 
 export const LIFECYCLE_LABEL: Record<LifecycleState, string> = {
   OPEN: "進行中",
@@ -131,6 +135,75 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   SALES: "営業",
   MANAGER: "マネージャー",
   ADMIN: "管理者",
+};
+
+export const DECISION_TYPE_LABEL: Record<AIDecisionType, string> = {
+  ENTITY_RESOLUTION: "顧客の特定",
+  OPPORTUNITY_RESOLUTION: "案件の特定",
+  STATE_CHANGE: "状態の判定",
+  NEXT_ACTION: "次アクション",
+  RISK: "リスク評価",
+  COMMITMENT: "約束の抽出",
+  NOTIFICATION: "通知",
+};
+
+export const DECISION_STATUS_LABEL: Record<AIDecisionStatus, string> = {
+  AUTO_APPLIED: "自動反映",
+  REVIEW_REQUIRED: "確認待ち",
+  APPROVED: "承認済み",
+  REJECTED: "却下",
+  REVERTED: "取消",
+};
+
+export const ACTOR_TYPE_LABEL: Record<ActorType, string> = {
+  USER: "担当者",
+  AI: "AI",
+  SYSTEM: "システム",
+  ADMIN: "管理者",
+};
+
+/**
+ * `AuditLog.action` / `.entityType` are plain `string` in the domain (not a closed union), so these
+ * are lookup tables with an English fallback for anything not listed rather than exhaustive Records.
+ */
+export const AUDIT_ACTION_LABEL: Record<string, string> = {
+  ACTIVITY_CREATED: "活動を記録",
+  ACTIVITY_DETACHED: "活動の紐付けを解除",
+  COMMITMENT_DUE_SET: "約束の期限を設定",
+  COMMITMENT_UPDATED: "約束を更新",
+  CONFIG_UPDATED: "設定を変更",
+  CONTEXT_RECOMPUTED: "AI整理を再計算",
+  CUSTOMER_CONFIRMED_NEW: "新規顧客として確定",
+  CUSTOMER_MERGED: "顧客を統合",
+  NEXT_ACTION_CREATED: "次アクションを作成",
+  NEXT_ACTION_DUE_SET: "次アクションの期限を設定",
+  NEXT_ACTION_UPDATED: "次アクションを更新",
+  OPPORTUNITY_DELETED: "案件を削除",
+  OPPORTUNITY_EDITED: "案件を編集",
+  OPPORTUNITY_MERGED: "案件を統合",
+  OPPORTUNITY_RESTORED: "案件を復元",
+  REVIEW_DISMISSED: "確認を却下",
+  REVIEW_RESOLVED: "確認を解決",
+  SOURCE_DISCARDED: "取込を破棄",
+  SOURCE_FAILED: "取込が失敗",
+  SOURCE_PROCESSED: "取込を処理",
+  SOURCE_RECEIVED: "取込を受付",
+  SOURCE_REVERTED: "取込を取消",
+  USER_CREATED: "メンバーを作成",
+  USER_ROLE_CHANGED: "役割を変更",
+  USER_UPDATED: "メンバーを更新",
+};
+
+export const ENTITY_TYPE_LABEL: Record<string, string> = {
+  activity: "活動",
+  commitment: "約束",
+  customer_account: "顧客",
+  next_action: "次アクション",
+  opportunity: "案件",
+  review_item: "確認",
+  settings: "設定",
+  source_document: "取込",
+  user: "メンバー",
 };
 
 export const ATTENTION_LABEL: Record<

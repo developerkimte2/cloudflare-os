@@ -29,10 +29,16 @@ import { ReviewCard } from "../components/ReviewCard";
 import { formatDate, formatDateTime, isoToLocalInput, localInputToIso } from "../format";
 import {
   ACTIVITY_TYPE_LABEL,
+  ACTOR_TYPE_LABEL,
+  AUDIT_ACTION_LABEL,
   COMMITMENT_SIDE_LABEL,
+  DECISION_STATUS_LABEL,
+  DECISION_TYPE_LABEL,
+  ENTITY_TYPE_LABEL,
   LIFECYCLE_LABEL,
   NEXT_ACTION_TYPE_LABEL,
   PRIORITY_LABEL,
+  RISK_LABEL,
 } from "../labels";
 
 type LifecycleState = OpportunityDetail["lifecycleState"];
@@ -432,7 +438,10 @@ function ContextSection({
               <ul className="mt-1 list-inside list-disc text-sm text-kumo-default">
                 {asRiskList(context.risksJson).map((risk, index) => (
                   <li key={index}>
-                    {risk.level && <Badge label={risk.level} tone="warning" />} {risk.reason}
+                    {risk.level && (
+                      <Badge label={(RISK_LABEL as Record<string, string>)[risk.level] ?? risk.level} tone="warning" />
+                    )}{" "}
+                    {risk.reason}
                   </li>
                 ))}
               </ul>
@@ -790,9 +799,9 @@ function DecisionHistory({
         {sorted.map((decision) => (
           <div key={decision.id} className="px-3.5 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge label={decision.decisionType} tone="neutral" />
+              <Badge label={DECISION_TYPE_LABEL[decision.decisionType]} tone="neutral" />
               <Badge
-                label={decision.status}
+                label={DECISION_STATUS_LABEL[decision.status]}
                 tone={decision.status === "REJECTED" || decision.status === "REVERTED" ? "danger" : "info"}
               />
               <span className="text-xs text-kumo-inactive">確信度 {Math.round(decision.confidence * 100)}%</span>
@@ -817,9 +826,9 @@ function AuditSection({ audit, timezone }: { audit: AuditLog[]; timezone: string
       <div className="divide-y divide-kumo-line rounded-lg border border-kumo-line">
         {sorted.map((entry) => (
           <div key={entry.id} className="flex items-center gap-3 px-3.5 py-2 text-xs">
-            <Badge label={entry.actorType} tone="neutral" />
+            <Badge label={ACTOR_TYPE_LABEL[entry.actorType]} tone="neutral" />
             <span className="min-w-0 flex-1 truncate text-kumo-default">
-              {entry.action} — {entry.entityType}
+              {AUDIT_ACTION_LABEL[entry.action] ?? entry.action} — {ENTITY_TYPE_LABEL[entry.entityType] ?? entry.entityType}
             </span>
             <span className="shrink-0 text-kumo-inactive">{formatDateTime(entry.createdAt, timezone)}</span>
           </div>
