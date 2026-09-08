@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+// Deep import via its own package.json "exports" subpath: this leaf module has no DB/LLM code,
+// unlike "@gadgets/sales-core" (the package index), which would drag db/node-sqlite's
+// `node:sqlite` into the browser bundle (FB_20260908 D).
+import { splitCaptureText } from "@gadgets/sales-core/pipeline/split";
 import type { CaptureOptions, CaptureResult, WhoAmI } from "../../src/management-types";
 import { localInputToIso } from "../format";
+import { BatchCaptureView } from "./BatchCaptureView";
 import { CaptureResultView } from "./CaptureResultView";
 
 type SourceTypeOption = NonNullable<CaptureOptions["sourceType"]>;
@@ -39,6 +44,19 @@ export function CaptureBox({
   const [result, setResult] = useState<CaptureResult>();
   const [lastText, setLastText] = useState("");
   const [lastOptions, setLastOptions] = useState<CaptureOptions | undefined>();
+  // Set once the user opts into taking a multi-record paste one record at a time; while set, the
+  // normal textarea/submit UI is replaced by BatchCaptureView (FB_20260908 item D).
+  const [batchChunks, setBatchChunks] = useState<string[]>();
+
+  const split = useMemo(() => splitCaptureText(text), [text]);
+  const headingSplit = split.rule === "heading" && split.chunks.length >= 2 ? split.chunks : undefined;
+  const blankLinesSplit = split.rule === "blank-lines" ? split.chunks : undefined;
+
+  const startBatch = (chunks: string[]) => {
+    setBatchChunks(chunks);
+    setText("");
+    setResult(undefined);
+  };
 
   const submit = async (overrideText?: string, overrideOptions?: CaptureOptions) => {
     const body = overrideText ?? text;
@@ -65,6 +83,20 @@ export function CaptureBox({
     }
   };
 
+  if (batchChunks) {
+    return (
+      <div className="rounded-xl border border-kumo-line bg-kumo-control p-3.5">
+        <BatchCaptureView
+          chunks={batchChunks}
+          ai={ai}
+          onCapture={onCapture}
+          onOpenOpportunity={onOpenOpportunity}
+          onDone={() => setBatchChunks(undefined)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-kumo-line bg-kumo-control p-3.5">
       <textarea
@@ -74,6 +106,25 @@ export function CaptureBox({
         rows={4}
         className="w-full resize-none rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm text-kumo-default outline-none placeholder:text-kumo-inactive focus:border-kumo-ring focus:ring-1 focus:ring-kumo-ring/20"
       />
+      {headingSplit && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-kumo-tint px-2.5 py-2 text-xs text-kumo-subtle">
+          <span>{headingSplit.length} 件の記録が含まれているようです。</span>
+          <button
+            type="button"
+            onClick={() => startBatch(headingSplit)}
+            className="press rounded-md bg-kumo-brand px-2 py-1 font-medium text-white hover:bg-kumo-brand-hover"
+          >
+            {headingSplit.length} 件に分けて取り込む
+          </button>
+          <button
+            type="button"
+            onClick={() => void submit()}
+            className="press rounded-md border border-kumo-line px-2 py-1 font-medium text-kumo-default hover:bg-kumo-base"
+          >
+            1 件として取り込む
+          </button>
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between gap-3">
         <button
           type="button"
@@ -117,6 +168,15 @@ export function CaptureBox({
               className="h-7 rounded-md border border-kumo-line bg-kumo-base px-1.5 text-xs text-kumo-default"
             />
           </label>
+          {blankLinesSplit && (
+            <button
+              type="button"
+              onClick={() => startBatch(blankLinesSplit)}
+              className="text-xs text-kumo-link hover:underline"
+            >
+              空行で {blankLinesSplit.length} 件に分けて取り込む
+            </button>
+          )}
         </div>
       )}
       {result && (

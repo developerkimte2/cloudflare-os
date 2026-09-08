@@ -270,6 +270,10 @@ export interface SalesSession {
    * commitments and next actions, and refreshes the deal's context. Nothing is required from the
    * user beyond the text. Returns what was created; check `reviews` for questions to relay to the
    * user (e.g. which of two customers this is) and `error` for a failed AI run (retry later).
+   *
+   * One call is one deal: if the text plainly covers several separate customers or meetings (e.g.
+   * several pasted daily reports), call `capture()` once per record instead of pasting them all
+   * together — a single call only ever produces one activity and one opportunity.
    */
   capture(text: string, options?: CaptureOptions): Promise<CaptureResult>;
 

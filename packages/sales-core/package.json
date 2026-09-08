@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./node-sqlite": "./src/db/node-sqlite.ts"
+    "./node-sqlite": "./src/db/node-sqlite.ts",
+    "./pipeline/split": "./src/pipeline/split.ts"
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.test.json",
