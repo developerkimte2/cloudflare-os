@@ -68,7 +68,7 @@ export function CaptureBox({
       <textarea
         value={text}
         onChange={(event) => setText(event.currentTarget.value)}
-        placeholder="話す、または貼る（メール、議事録、雑な一言でもOK）"
+        placeholder="貼る、または書く（メール、議事録、雑な一言でもOK）"
         rows={4}
         className="w-full resize-none rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm text-kumo-default outline-none placeholder:text-kumo-inactive focus:border-kumo-ring focus:ring-1 focus:ring-kumo-ring/20"
       />
