@@ -679,6 +679,69 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/notion"
       }
     },
+    "gatekeeper-sales": {
+      "bindings": [
+        {
+          "name": "SALES_AI_API_KEY",
+          "text": "$SECRET(SALES_AI_API_KEY)",
+          "type": "secret_text"
+        }
+      ],
+      "compatibilityDate": "2026-09-04",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage",
+        "nodejs_als"
+      ],
+      "inputs": [
+        {
+          "help": "Anthropic API key (SALES_AI_PROVIDER=anthropic) or a Cloudflare API token with Workers AI access (SALES_AI_PROVIDER=workers-ai). Leave empty for a self-hosted OpenAI-compatible endpoint that needs no key.",
+          "kind": "secret",
+          "label": "AI provider API key",
+          "name": "SALES_AI_API_KEY",
+          "setupSteps": [
+            "Choose the provider in the worker's SALES_AI_PROVIDER var (anthropic / workers-ai / ollama / openai-compat) and the model in SALES_AI_MODEL.",
+            "For workers-ai, also set SALES_AI_ACCOUNT_ID (or SALES_AI_BASE_URL) so the OpenAI-compatible endpoint can be built.",
+            "Paste the key here. It is stored as a secret and never shown again."
+          ]
+        }
+      ],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "sales.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "SalesCoreDurableObject",
+            "SalesGatekeeper"
+          ],
+          "tag": "v1"
+        }
+      ],
+      "modules": [
+        {
+          "name": "sales.js",
+          "r2Key": "blobs/modules/9c79913bdff17f446ae6812178cc9d7e3c34f8f4547eed94b5c038b29355b89c",
+          "sha256": "9c79913bdff17f446ae6812178cc9d7e3c34f8f4547eed94b5c038b29355b89c",
+          "size": 58,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "sales",
+      "singleton": true,
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/sales",
+        "SALES_AI_MODEL": "@cf/openai/gpt-oss-120b",
+        "SALES_AI_PROVIDER": "workers-ai",
+        "SALES_TENANT": "default"
+      }
+    },
     "gatekeeper-scheduler": {
       "bindings": [],
       "compatibilityDate": "2026-09-04",

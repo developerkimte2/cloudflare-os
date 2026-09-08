@@ -1,0 +1,13 @@
+[
+  {
+    "name": "SALES_AI_API_KEY",
+    "kind": "secret",
+    "label": "AI provider API key",
+    "help": "Anthropic API key (SALES_AI_PROVIDER=anthropic) or a Cloudflare API token with Workers AI access (SALES_AI_PROVIDER=workers-ai). Leave empty for a self-hosted OpenAI-compatible endpoint that needs no key.",
+    "setupSteps": [
+      "Choose the provider in the worker's SALES_AI_PROVIDER var (anthropic / workers-ai / ollama / openai-compat) and the model in SALES_AI_MODEL.",
+      "For workers-ai, also set SALES_AI_ACCOUNT_ID (or SALES_AI_BASE_URL) so the OpenAI-compatible endpoint can be built.",
+      "Paste the key here. It is stored as a secret and never shown again."
+    ]
+  }
+]

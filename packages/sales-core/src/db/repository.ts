@@ -1,0 +1,487 @@
+/**
+ * Repository layer (設計書 §49-4). Thin, explicit queries over `SqlExecutor`; no business rules
+ * here — those live in `rules/` and `pipeline/`.
+ */
+import type {
+  AIContextSnapshot, AIDecision, Activity, AuditLog, Commitment, CustomerAccount,
+  CustomerPerson, ExternalIdentity, LifecycleState, NextAction, NextActionStatus, Opportunity,
+  ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
+} from "../domain/types.js";
+import { normalizeEmail, normalizeName } from "../domain/util.js";
+import type { SqlExecutor, SqlValue } from "./sql.js";
+import * as T from "./tables.js";
+
+export class Repository {
+  constructor(readonly db: SqlExecutor) {}
+
+  transaction<R>(fn: () => R): R {
+    return this.db.transaction(fn);
+  }
+
+  // ---- users / identities -------------------------------------------------------------------
+
+  getUser(id: string): User | undefined {
+    return T.users.get(this.db, id);
+  }
+
+  getUserByEmail(email: string): User | undefined {
+    return T.users.select(this.db, "WHERE email = ?", normalizeEmail(email))[0];
+  }
+
+  listUsers(): User[] {
+    return T.users.select(this.db, "ORDER BY display_name");
+  }
+
+  insertUser(user: User): void {
+    T.users.insert(this.db, { ...user, email: normalizeEmail(user.email) });
+  }
+
+  updateUser(user: User): void {
+    T.users.update(this.db, { ...user, email: normalizeEmail(user.email) });
+  }
+
+  getIdentity(provider: string, externalId: string): ExternalIdentity | undefined {
+    return T.externalIdentities.select(
+      this.db, "WHERE provider = ? AND external_id = ?", provider, externalId)[0];
+  }
+
+  insertIdentity(identity: ExternalIdentity): void {
+    T.externalIdentities.insert(this.db, identity);
+  }
+
+  deleteIdentity(provider: string, externalId: string): void {
+    this.db.run("DELETE FROM external_identities WHERE provider = ? AND external_id = ?",
+      provider, externalId);
+  }
+
+  // ---- customers -------------------------------------------------------------------------------
+
+  getAccount(id: string): CustomerAccount | undefined {
+    return T.customerAccounts.get(this.db, id);
+  }
+
+  listAccounts(limit = 500): CustomerAccount[] {
+    return T.customerAccounts.select(this.db, "ORDER BY display_name LIMIT ?", limit);
+  }
+
+  findAccountsByNormalizedName(name: string): CustomerAccount[] {
+    return T.customerAccounts.select(this.db, "WHERE normalized_name = ?", normalizeName(name));
+  }
+
+  /** Substring candidates in either direction, for the review options list. */
+  findAccountCandidates(name: string, limit = 5): CustomerAccount[] {
+    const n = normalizeName(name);
+    if (!n) return [];
+    return T.customerAccounts.select(
+      this.db,
+      "WHERE normalized_name LIKE ? OR ? LIKE '%' || normalized_name || '%' " +
+      "ORDER BY length(normalized_name) LIMIT ?",
+      `%${n}%`, n, limit);
+  }
+
+  findAccountByDomain(domain: string): CustomerAccount | undefined {
+    return T.customerAccounts.select(this.db, "WHERE primary_domain = ?", domain.toLowerCase())[0];
+  }
+
+  insertAccount(account: CustomerAccount): void {
+    T.customerAccounts.insert(this.db, {
+      ...account, normalizedName: account.normalizedName ?? normalizeName(account.displayName),
+    });
+  }
+
+  updateAccount(account: CustomerAccount): void {
+    T.customerAccounts.update(this.db, account);
+  }
+
+  deleteAccount(id: string): void {
+    T.customerAccounts.delete(this.db, id);
+  }
+
+  getPerson(id: string): CustomerPerson | undefined {
+    return T.customerPersons.get(this.db, id);
+  }
+
+  findPersonByEmail(email: string): CustomerPerson | undefined {
+    return T.customerPersons.select(this.db, "WHERE email = ?", normalizeEmail(email))[0];
+  }
+
+  findPersonsByName(name: string, accountId?: string): CustomerPerson[] {
+    const n = normalizeName(name);
+    return accountId
+      ? T.customerPersons.select(this.db, "WHERE normalized_name = ? AND account_id = ?", n, accountId)
+      : T.customerPersons.select(this.db, "WHERE normalized_name = ?", n);
+  }
+
+  listPersonsForAccount(accountId: string): CustomerPerson[] {
+    return T.customerPersons.select(this.db, "WHERE account_id = ? ORDER BY display_name", accountId);
+  }
+
+  insertPerson(person: CustomerPerson): void {
+    T.customerPersons.insert(this.db, {
+      ...person,
+      normalizedName: person.normalizedName ?? normalizeName(person.displayName),
+      email: person.email ? normalizeEmail(person.email) : undefined,
+    });
+  }
+
+  updatePerson(person: CustomerPerson): void {
+    T.customerPersons.update(this.db, person);
+  }
+
+  deletePerson(id: string): void {
+    T.customerPersons.delete(this.db, id);
+  }
+
+  // ---- opportunities ---------------------------------------------------------------------------
+
+  getOpportunity(id: string): Opportunity | undefined {
+    return T.opportunities.get(this.db, id);
+  }
+
+  insertOpportunity(opp: Opportunity): void {
+    T.opportunities.insert(this.db, opp);
+  }
+
+  /**
+   * Optimistic concurrency (NFR-05): the update only lands if the stored version equals the
+   * caller's `expectedVersion`; the stored version is then bumped.
+   */
+  updateOpportunity(opp: Opportunity, expectedVersion: number): boolean {
+    return this.db.transaction(() => {
+      // Check-then-write inside a transaction: a bare post-write version comparison would
+      // false-positive when the row's *current* version already equals expectedVersion + 1
+      // (e.g. a second call with a now-stale expectedVersion right after a successful update),
+      // because the WHERE clause matches zero rows yet the stored version happens to match
+      // `next.version` anyway.
+      const current = this.db.one<{ version: number }>(
+        "SELECT version FROM opportunities WHERE id = ?", opp.id);
+      if (!current || current.version !== expectedVersion) return false;
+      const next = { ...opp, version: expectedVersion + 1 };
+      const sets = T.opportunities.columns.filter(c => c.column !== "id").map(c => `${c.column} = ?`);
+      const values = T.opportunities.toRow(next).slice(1);
+      this.db.run(
+        `UPDATE opportunities SET ${sets.join(", ")} WHERE id = ? AND version = ?`,
+        ...values, next.id, expectedVersion);
+      return true;
+    });
+  }
+
+  deleteOpportunity(id: string): void {
+    T.opportunities.delete(this.db, id);
+  }
+
+  listOpenOpportunitiesForAccount(accountId: string): Opportunity[] {
+    return T.opportunities.select(this.db,
+      "WHERE account_id = ? AND lifecycle_state IN ('OPEN','ON_HOLD') ORDER BY updated_at DESC",
+      accountId);
+  }
+
+  /** Opportunities a user may see: owned, collaborating, or all for managers/admins. */
+  listOpportunitiesVisibleTo(user: User, filter: OpportunityQuery = {}): Opportunity[] {
+    const where: string[] = [];
+    const params: SqlValue[] = [];
+    if (user.role === "SALES") {
+      where.push("(owner_user_id = ? OR collaborator_user_ids LIKE ?)");
+      params.push(user.id, `%"${user.id}"%`);
+    }
+    if (filter.lifecycleStates?.length) {
+      where.push(`lifecycle_state IN (${filter.lifecycleStates.map(() => "?").join(",")})`);
+      params.push(...filter.lifecycleStates);
+    }
+    if (filter.ownerUserId) {
+      where.push("owner_user_id = ?");
+      params.push(filter.ownerUserId);
+    }
+    if (filter.accountId) {
+      where.push("account_id = ?");
+      params.push(filter.accountId);
+    }
+    if (filter.expectedAmountGte !== undefined) {
+      where.push("expected_amount >= ?");
+      params.push(filter.expectedAmountGte);
+    }
+    if (filter.notUpdatedSince) {
+      where.push("COALESCE(last_meaningful_activity_at, updated_at) < ?");
+      params.push(filter.notUpdatedSince);
+    }
+    const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    return T.opportunities.select(this.db,
+      `${clause} ORDER BY updated_at DESC LIMIT ?`, ...params, filter.limit ?? 200);
+  }
+
+  countOpportunitiesByState(): { lifecycleState: LifecycleState; count: number }[] {
+    return this.db.all<{ lifecycle_state: LifecycleState; count: number }>(
+      "SELECT lifecycle_state, COUNT(*) AS count FROM opportunities GROUP BY lifecycle_state")
+      .map(r => ({ lifecycleState: r.lifecycle_state, count: r.count }));
+  }
+
+  // ---- sources ---------------------------------------------------------------------------------
+
+  getSource(id: string): SourceDocument | undefined {
+    return T.sourceDocuments.get(this.db, id);
+  }
+
+  findSourceByHash(hash: string): SourceDocument | undefined {
+    return T.sourceDocuments.select(this.db, "WHERE content_hash = ?", hash)[0];
+  }
+
+  insertSource(source: SourceDocument): void {
+    T.sourceDocuments.insert(this.db, source);
+  }
+
+  updateSource(source: SourceDocument): void {
+    T.sourceDocuments.update(this.db, source);
+  }
+
+  listRecentSources(userId: string | undefined, limit = 50): SourceDocument[] {
+    return userId
+      ? T.sourceDocuments.select(this.db,
+          "WHERE submitted_by_user_id = ? ORDER BY received_at DESC LIMIT ?", userId, limit)
+      : T.sourceDocuments.select(this.db, "ORDER BY received_at DESC LIMIT ?", limit);
+  }
+
+  // ---- activities / commitments / next actions -------------------------------------------------
+
+  insertActivity(activity: Activity): void {
+    T.activities.insert(this.db, activity);
+  }
+
+  getActivity(id: string): Activity | undefined {
+    return T.activities.get(this.db, id);
+  }
+
+  deleteActivity(id: string): void {
+    T.activities.delete(this.db, id);
+  }
+
+  listActivitiesForOpportunity(opportunityId: string, limit = 100): Activity[] {
+    return T.activities.select(this.db,
+      "WHERE opportunity_id = ? ORDER BY occurred_at DESC LIMIT ?", opportunityId, limit);
+  }
+
+  insertCommitment(c: Commitment): void {
+    T.commitments.insert(this.db, c);
+  }
+
+  getCommitment(id: string): Commitment | undefined {
+    return T.commitments.get(this.db, id);
+  }
+
+  updateCommitment(c: Commitment): void {
+    T.commitments.update(this.db, c);
+  }
+
+  deleteCommitment(id: string): void {
+    T.commitments.delete(this.db, id);
+  }
+
+  listCommitmentsForOpportunity(opportunityId: string, openOnly = false): Commitment[] {
+    return T.commitments.select(this.db,
+      `WHERE opportunity_id = ?${openOnly ? " AND status IN ('OPEN','OVERDUE')" : ""} ORDER BY due_at`,
+      opportunityId);
+  }
+
+  getNextAction(id: string): NextAction | undefined {
+    return T.nextActions.get(this.db, id);
+  }
+
+  insertNextAction(a: NextAction): void {
+    T.nextActions.insert(this.db, a);
+  }
+
+  updateNextAction(a: NextAction): void {
+    T.nextActions.update(this.db, a);
+  }
+
+  deleteNextAction(id: string): void {
+    T.nextActions.delete(this.db, id);
+  }
+
+  listNextActionsForOpportunity(opportunityId: string, statuses?: NextActionStatus[]): NextAction[] {
+    if (statuses?.length) {
+      return T.nextActions.select(this.db,
+        `WHERE opportunity_id = ? AND status IN (${statuses.map(() => "?").join(",")}) ` +
+        "ORDER BY COALESCE(due_at, '9999') , created_at", opportunityId, ...statuses);
+    }
+    return T.nextActions.select(this.db,
+      "WHERE opportunity_id = ? ORDER BY COALESCE(due_at, '9999'), created_at", opportunityId);
+  }
+
+  listOpenNextActionsForUser(userId: string, limit = 200): NextAction[] {
+    return T.nextActions.select(this.db,
+      "WHERE assigned_user_id = ? AND status IN ('OPEN','SNOOZED') " +
+      "ORDER BY COALESCE(due_at, '9999'), priority, created_at LIMIT ?", userId, limit);
+  }
+
+  listOpenNextActions(limit = 500): NextAction[] {
+    return T.nextActions.select(this.db,
+      "WHERE status IN ('OPEN','SNOOZED') ORDER BY COALESCE(due_at, '9999'), created_at LIMIT ?",
+      limit);
+  }
+
+  // ---- AI artefacts ----------------------------------------------------------------------------
+
+  insertSnapshot(s: AIContextSnapshot): void {
+    T.aiContextSnapshots.insert(this.db, s);
+  }
+
+  deleteSnapshot(id: string): void {
+    T.aiContextSnapshots.delete(this.db, id);
+  }
+
+  latestSnapshot(opportunityId: string): AIContextSnapshot | undefined {
+    return T.aiContextSnapshots.select(this.db,
+      "WHERE opportunity_id = ? ORDER BY created_at DESC LIMIT 1", opportunityId)[0];
+  }
+
+  insertDecision(d: AIDecision): void {
+    T.aiDecisions.insert(this.db, d);
+  }
+
+  updateDecision(d: AIDecision): void {
+    T.aiDecisions.update(this.db, d);
+  }
+
+  getDecision(id: string): AIDecision | undefined {
+    return T.aiDecisions.get(this.db, id);
+  }
+
+  listDecisionsForSource(sourceId: string): AIDecision[] {
+    return T.aiDecisions.select(this.db,
+      "WHERE input_source_ids_json LIKE ? ORDER BY created_at", `%"${sourceId}"%`);
+  }
+
+  listDecisionsForEntity(entityType: string, entityId: string, limit = 50): AIDecision[] {
+    return T.aiDecisions.select(this.db,
+      "WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC LIMIT ?",
+      entityType, entityId, limit);
+  }
+
+  // ---- reviews ---------------------------------------------------------------------------------
+
+  insertReview(r: ReviewItem): void {
+    T.reviewItems.insert(this.db, r);
+  }
+
+  updateReview(r: ReviewItem): void {
+    T.reviewItems.update(this.db, r);
+  }
+
+  deleteReview(id: string): void {
+    T.reviewItems.delete(this.db, id);
+  }
+
+  getReview(id: string): ReviewItem | undefined {
+    return T.reviewItems.get(this.db, id);
+  }
+
+  listReviews(status: ReviewStatus, assignedUserId?: string, limit = 200): ReviewItem[] {
+    return assignedUserId
+      ? T.reviewItems.select(this.db,
+          "WHERE status = ? AND assigned_user_id = ? ORDER BY created_at LIMIT ?",
+          status, assignedUserId, limit)
+      : T.reviewItems.select(this.db, "WHERE status = ? ORDER BY created_at LIMIT ?", status, limit);
+  }
+
+  listReviewsForSource(sourceId: string): ReviewItem[] {
+    return T.reviewItems.select(this.db,
+      "WHERE source_evidence_ids_json LIKE ? ORDER BY created_at", `%"${sourceId}"%`);
+  }
+
+  // ---- audit -----------------------------------------------------------------------------------
+
+  insertAudit(a: AuditLog): void {
+    T.auditLogs.insert(this.db, a);
+  }
+
+  listAuditForEntity(entityType: string, entityId: string, limit = 100): AuditLog[] {
+    return T.auditLogs.select(this.db,
+      "WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC LIMIT ?",
+      entityType, entityId, limit);
+  }
+
+  listAudit(limit = 200): AuditLog[] {
+    return T.auditLogs.select(this.db, "ORDER BY created_at DESC LIMIT ?", limit);
+  }
+
+  // ---- source applications (undo) --------------------------------------------------------------
+
+  getApplication(sourceId: string): SourceApplication | undefined {
+    return T.sourceApplications.get(this.db, sourceId);
+  }
+
+  insertApplication(a: SourceApplication): void {
+    T.sourceApplications.insert(this.db, a);
+  }
+
+  updateApplication(a: SourceApplication): void {
+    T.sourceApplications.update(this.db, a);
+  }
+
+  // ---- bulk re-linking (review resolution) -----------------------------------------------------
+
+  /** Moves every person / opportunity / activity from one account to another. */
+  reassignAccount(fromAccountId: string, toAccountId: string): void {
+    this.db.run("UPDATE customer_persons SET account_id = ? WHERE account_id = ?", toAccountId, fromAccountId);
+    this.db.run("UPDATE opportunities SET account_id = ? WHERE account_id = ?", toAccountId, fromAccountId);
+    this.db.run("UPDATE activities SET account_id = ? WHERE account_id = ?", toAccountId, fromAccountId);
+  }
+
+  /** Moves activities, commitments, next actions and snapshots between opportunities. */
+  moveOpportunityContents(fromOpportunityId: string, toOpportunityId: string): void {
+    for (const table of ["activities", "commitments", "next_actions", "ai_context_snapshots"]) {
+      this.db.run(`UPDATE ${table} SET opportunity_id = ? WHERE opportunity_id = ?`,
+        toOpportunityId, fromOpportunityId);
+    }
+    this.db.run("UPDATE source_applications SET opportunity_id = ? WHERE opportunity_id = ?",
+      toOpportunityId, fromOpportunityId);
+    this.db.run("UPDATE review_items SET related_entity_id = ? WHERE related_entity_type = 'opportunity' AND related_entity_id = ?",
+      toOpportunityId, fromOpportunityId);
+  }
+
+  listSourcesForOpportunity(opportunityId: string): SourceDocument[] {
+    return T.sourceDocuments.select(this.db,
+      "WHERE id IN (SELECT source_id FROM activities WHERE opportunity_id = ?) ORDER BY received_at DESC",
+      opportunityId);
+  }
+
+  listOverdueCommitments(before: string, limit = 200): Commitment[] {
+    return T.commitments.select(this.db,
+      "WHERE status IN ('OPEN','OVERDUE') AND due_at IS NOT NULL AND due_at < ? ORDER BY due_at LIMIT ?",
+      before, limit);
+  }
+
+  // ---- settings --------------------------------------------------------------------------------
+
+  getSetting<V>(key: string): V | undefined {
+    const row = this.db.one<{ value_json: string }>(
+      "SELECT value_json FROM settings WHERE key = ?", key);
+    return row ? JSON.parse(row.value_json) as V : undefined;
+  }
+
+  listSettings(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const row of this.db.all<{ key: string; value_json: string }>(
+      "SELECT key, value_json FROM settings")) {
+      out[row.key] = JSON.parse(row.value_json);
+    }
+    return out;
+  }
+
+  putSetting(key: string, value: unknown, updatedAt: string): void {
+    this.db.run(
+      "INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?) " +
+      "ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
+      key, JSON.stringify(value), updatedAt);
+  }
+}
+
+export interface OpportunityQuery {
+  lifecycleStates?: LifecycleState[];
+  ownerUserId?: string;
+  accountId?: string;
+  expectedAmountGte?: number;
+  /** ISO instant; returns opportunities whose last meaningful activity is older. */
+  notUpdatedSince?: string;
+  limit?: number;
+}

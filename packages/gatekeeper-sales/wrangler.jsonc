@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gatekeeper-sales",
+  "main": ".wrangler/validate/src/worker.ts",
+  "build": {
+    "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
+    "watch_dir": "src",
+  },
+  "compatibility_date": "2026-09-04",
+  "compatibility_flags": ["allow_irrevocable_stub_storage", "nodejs_als"],
+  "rules": [{ "type": "Text", "globs": ["**/*.txt"], "fallthrough": false }],
+  // All Durable Objects are reached through ctx.exports; no binding is required.
+  // SalesCoreDurableObject holds the whole tenant's Sales Context Core (SQLite).
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SalesCoreDurableObject", "SalesGatekeeper"],
+    },
+  ],
+  // Non-secret defaults. Secrets (SALES_AI_API_KEY) come from `.dev.vars` locally and from
+  // `wrangler secret` in production; see README.
+  "vars": {
+    "SALES_TENANT": "default",
+    "SALES_AI_PROVIDER": "workers-ai",
+    "SALES_AI_MODEL": "@cf/openai/gpt-oss-120b",
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false },
+  },
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@gadgets/sales-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Sales Operations OS — Sales Context Core domain library (Cloudflare OS independent).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node-sqlite": "./src/db/node-sqlite.ts"
+  },
+  "scripts": {
+    "build": "tsc && tsc -p tsconfig.test.json",
+    "clean": "rm -rf dist",
+    "test:run": "vitest run",
+    "eval": "node scripts/eval.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@gadgets/scripts": "workspace:*",
+    "@types/node": "^26.1.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
