@@ -125,6 +125,7 @@ export default function App({ api, openPrompt }: Props) {
             <TodayPage
               api={api}
               user={user}
+              ai={who.ai}
               onOpenOpportunity={openOpportunity}
               onReviewsChanged={refreshReviewCount}
             />
@@ -142,7 +143,7 @@ export default function App({ api, openPrompt }: Props) {
             />
           )}
           {route.kind === "review" && (
-            <ReviewPage api={api} onReviewsChanged={refreshReviewCount} onOpenOpportunity={openOpportunity} />
+            <ReviewPage api={api} ai={who.ai} onReviewsChanged={refreshReviewCount} onOpenOpportunity={openOpportunity} />
           )}
           {route.kind === "manager" && canManage && (
             <ManagerPage api={api} openPrompt={openPrompt} onOpenOpportunity={openOpportunity} />

@@ -9,8 +9,10 @@ import type {
   TodayAction,
   TodayView,
   UserDto,
+  WhoAmI,
 } from "../../src/management-types";
 import { useApiAction, useAsyncData } from "../api";
+import { AiAttribution } from "../components/AiAttribution";
 import { CaptureBox } from "../components/CaptureBox";
 import { CaptureResultView } from "../components/CaptureResultView";
 import { NextActionRow } from "../components/NextActionRow";
@@ -22,11 +24,13 @@ import { ATTENTION_LABEL, PROCESSING_STATUS_LABEL, SOURCE_TYPE_LABEL } from "../
 export default function TodayPage({
   api,
   user,
+  ai,
   onOpenOpportunity,
   onReviewsChanged,
 }: {
   api: RpcStub<SalesManagementApi>;
   user: UserDto;
+  ai: WhoAmI["ai"];
   onOpenOpportunity: (id: string) => void;
   onReviewsChanged: () => void;
 }) {
@@ -110,6 +114,7 @@ export default function TodayPage({
       <div className="mt-5">
         <CaptureBox
           timezone={timezone}
+          ai={ai}
           onCapture={capture}
           onOpenOpportunity={onOpenOpportunity}
           onResolveReview={resolveReview}
@@ -143,7 +148,7 @@ export default function TodayPage({
       />
 
       {data.reviews.length > 0 && (
-        <Section title={`確認してください (${data.reviews.length})`}>
+        <Section title={`確認してください (${data.reviews.length})`} action={<AiAttribution ai={ai} />}>
           <div className="space-y-2">
             {data.reviews.map((review) => (
               <ReviewCard
@@ -220,6 +225,7 @@ export default function TodayPage({
                   <CaptureResultView
                     result={retryResults[source.id]!}
                     timezone={timezone}
+                    ai={ai}
                     onOpenOpportunity={onOpenOpportunity}
                     onResolveReview={resolveReview}
                     onDismissReview={dismissReview}
@@ -271,10 +277,19 @@ function TodayActionSection({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title, action, children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="mt-7">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">{title}</h2>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">{title}</h2>
+        {action}
+      </div>
       {children}
     </section>
   );

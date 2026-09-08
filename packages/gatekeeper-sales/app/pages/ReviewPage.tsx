@@ -1,7 +1,8 @@
 import type { RpcStub } from "capnweb";
 import { useMemo, useState } from "react";
-import type { JsonValue, ReviewDto, SalesManagementApi } from "../../src/management-types";
+import type { JsonValue, ReviewDto, SalesManagementApi, WhoAmI } from "../../src/management-types";
 import { useApiAction, useAsyncData } from "../api";
+import { AiAttribution } from "../components/AiAttribution";
 import { ReviewStatusBadge } from "../components/Badges";
 import { ReviewCard } from "../components/ReviewCard";
 import { formatDateTime } from "../format";
@@ -16,10 +17,12 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function ReviewPage({
   api,
+  ai,
   onReviewsChanged,
   onOpenOpportunity,
 }: {
   api: RpcStub<SalesManagementApi>;
+  ai: WhoAmI["ai"];
   onReviewsChanged: () => void;
   onOpenOpportunity: (id: string) => void;
 }) {
@@ -54,11 +57,14 @@ export default function ReviewPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <header>
-        <h1 className="text-xl font-semibold text-kumo-default">確認</h1>
-        <p className="mt-1 text-sm text-kumo-subtle">
-          AIが自動で確定しなかった内容です。内容を確認し、選択肢から解決してください。
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-kumo-default">確認</h1>
+          <p className="mt-1 text-sm text-kumo-subtle">
+            AIが自動で確定しなかった内容です。内容を確認し、選択肢から解決してください。
+          </p>
+        </div>
+        <AiAttribution ai={ai} />
       </header>
 
       <div className="mt-4 flex gap-1 border-b border-kumo-line">

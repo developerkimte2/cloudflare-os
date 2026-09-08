@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CaptureOptions, CaptureResult } from "../../src/management-types";
+import type { CaptureOptions, CaptureResult, WhoAmI } from "../../src/management-types";
 import { localInputToIso } from "../format";
 import { CaptureResultView } from "./CaptureResultView";
 
@@ -18,12 +18,14 @@ const SOURCE_TYPE_OPTIONS: Array<{ value: SourceTypeOption; label: string }> = [
  */
 export function CaptureBox({
   timezone,
+  ai,
   onCapture,
   onOpenOpportunity,
   onResolveReview,
   onDismissReview,
 }: {
   timezone: string;
+  ai: WhoAmI["ai"];
   onCapture: (text: string, options?: CaptureOptions) => Promise<CaptureResult | undefined>;
   onOpenOpportunity: (opportunityId: string) => void;
   onResolveReview: (id: string, optionId: string, input?: Record<string, unknown>) => void | Promise<void>;
@@ -121,6 +123,7 @@ export function CaptureBox({
         <CaptureResultView
           result={result}
           timezone={timezone}
+          ai={ai}
           onOpenOpportunity={onOpenOpportunity}
           onResolveReview={onResolveReview}
           onDismissReview={onDismissReview}

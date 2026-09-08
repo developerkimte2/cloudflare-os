@@ -1,11 +1,13 @@
-import type { CaptureResult } from "../../src/management-types";
+import type { CaptureResult, WhoAmI } from "../../src/management-types";
 import { ACTIVITY_TYPE_LABEL } from "../labels";
+import { AiAttribution } from "./AiAttribution";
 import { Badge } from "./Badges";
 import { ReviewCard } from "./ReviewCard";
 
 export function CaptureResultView({
   result,
   timezone,
+  ai,
   onOpenOpportunity,
   onResolveReview,
   onDismissReview,
@@ -13,6 +15,7 @@ export function CaptureResultView({
 }: {
   result: CaptureResult;
   timezone: string;
+  ai: WhoAmI["ai"];
   onOpenOpportunity: (opportunityId: string) => void;
   onResolveReview: (id: string, optionId: string, input?: Record<string, unknown>) => void | Promise<void>;
   onDismissReview: (id: string) => void | Promise<void>;
@@ -44,6 +47,7 @@ export function CaptureResultView({
 
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3">
+      <AiAttribution ai={ai} />
       {result.duplicate && (
         <p className="text-xs text-kumo-subtle">同じ内容が既に取り込まれています。新規の変更はありません。</p>
       )}

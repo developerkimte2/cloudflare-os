@@ -448,7 +448,7 @@ function ContextSection({
             </div>
           )}
           <p className="mt-3 text-[11px] text-kumo-inactive">
-            {context.modelProvider}/{context.modelName} ・ {context.promptVersion} ・{" "}
+            判定AI: {context.modelProvider}/{context.modelName} ・ {context.promptVersion} ・{" "}
             {formatDateTime(context.createdAt, timezone)}
           </p>
         </div>
@@ -809,7 +809,7 @@ function DecisionHistory({
             </div>
             <p className="mt-1 text-sm text-kumo-default">{decision.reasoningSummary}</p>
             <p className="mt-0.5 text-[11px] text-kumo-inactive">
-              {decision.modelName} ・ {decision.promptVersion}
+              判定AI: {decision.modelName} ・ {decision.promptVersion}
             </p>
           </div>
         ))}
