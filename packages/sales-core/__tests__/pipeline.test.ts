@@ -498,4 +498,24 @@ describe("askQuestion (capture box search mode)", () => {
 
     expect(events).toEqual([]);
   });
+
+  it("stays fast with 500 opportunities and only hands the model a handful of them", async () => {
+    const llm = new FakeLlmProvider(["ABC株式会社の案件は見積送付待ちです。"]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo, { displayName: "ABC株式会社" });
+    const target = makeOpportunity(svc.repo, account.id, user.id, { title: "ABC株式会社 新機能提案" });
+    const otherAccount = makeAccount(svc.repo, { displayName: "その他株式会社" });
+    for (let i = 0; i < 499; i++) {
+      makeOpportunity(svc.repo, otherAccount.id, user.id, { title: `案件${i}` });
+    }
+
+    const start = performance.now();
+    const result = await svc.askQuestion({ userId: user.id }, "ABC株式会社の状況どうなっている？");
+    const elapsedMs = performance.now() - start;
+
+    expect(result.references.map(r => r.id)).toEqual([target.id]);
+    expect(llm.requests[0]!.user.split("- id=").length - 1).toBeLessThanOrEqual(5);
+    expect(elapsedMs).toBeLessThan(1000);
+  });
 });

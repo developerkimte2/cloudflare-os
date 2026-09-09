@@ -157,22 +157,37 @@ export class SalesService {
     const user = this.requireUser(actor);
     const q = question.trim();
     if (!q) throw new TypeError("質問を入力してください");
-    const visible = this.repo.listOpportunitiesVisibleTo(user, { limit: 500 }).map(o => this.summarize(o));
+    const visible = this.repo.listOpportunitiesVisibleTo(user, { limit: 500 });
     if (visible.length === 0) {
       return {
         answer: "まだ案件データがありません。取り込みを行うと、ここで状況を聞けるようになります。",
         references: [], matchedByName: false,
       };
     }
-    const matched = matchOpportunities(visible, q);
+    // Match on lightweight {id, accountName, title} refs first (one deduped account lookup per
+    // distinct account, not summarize()'s ~4 queries per opportunity for all 500) and only
+    // summarize() the handful actually chosen as context, below.
+    const accountNameCache = new Map<string, string>();
+    const accountNameOf = (accountId: string): string => {
+      let name = accountNameCache.get(accountId);
+      if (name === undefined) {
+        name = this.repo.getAccount(accountId)?.displayName ?? UNRESOLVED_ACCOUNT_NAME;
+        accountNameCache.set(accountId, name);
+      }
+      return name;
+    };
+    const refs = visible.map(o => ({ id: o.id, accountName: accountNameOf(o.accountId), title: o.title }));
+    const matchedRefs = matchOpportunities(refs, q);
     // Nothing named in the question matched: fall back to recent activity so the AI can still say
     // something useful (or honestly say it couldn't find the case) instead of answering from nothing.
     // matchedByName tells both the prompt and the UI which case this is, so neither one presents an
     // unrelated recent opportunity as if it were the one asked about.
-    const matchedByName = matched.length > 0;
-    const context = matchedByName
-      ? matched
+    const matchedByName = matchedRefs.length > 0;
+    const byId = new Map(visible.map(o => [o.id, o]));
+    const chosen = matchedByName
+      ? matchedRefs.map(r => byId.get(r.id)!)
       : [...visible].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
+    const context = chosen.map(o => this.summarize(o));
     const references = context.map(o => ({ id: o.id, accountName: o.accountName, title: o.title }));
     const request = buildAnswerRequest({
       referenceTime: nowIso(this.ctx.clock), timezone: user.timezone || this.config.defaultTimezone,

@@ -53,6 +53,29 @@ describe("matchOpportunities", () => {
     expect(matchOpportunities(short, "Aの状況は？")).toEqual([]);
   });
 
+  it("matches by title alone when no account name is mentioned", () => {
+    const opps = [
+      { id: "1", accountName: "ABC株式会社", title: "新機能提案ヒアリング" },
+      { id: "2", accountName: "合同会社ブルームワークス", title: "商談フォロー" },
+    ];
+    expect(matchOpportunities(opps, "新機能提案ヒアリングの進捗は？").map(o => o.id)).toEqual(["1"]);
+  });
+
+  it("does not match a 3-character title (title matching needs 4+ chars)", () => {
+    const opps = [{ id: "1", accountName: "ネオリンク", title: "商談中" }];
+    expect(matchOpportunities(opps, "商談中の状況は？")).toEqual([]);
+  });
+
+  it("prefers account-name matches over title matches for a different opportunity", () => {
+    const opps = [
+      { id: "1", accountName: "ABC株式会社", title: "見積送付" },
+      // This opportunity's title happens to appear in the question, but it belongs to a
+      // different, unnamed account — it must not be pulled in alongside the account match.
+      { id: "2", accountName: "合同会社ブルームワークス", title: "ABC株式会社の紹介案件" },
+    ];
+    expect(matchOpportunities(opps, "ABC株式会社の状況どうなっている？").map(o => o.id)).toEqual(["1"]);
+  });
+
   it("handles an empty question without throwing", () => {
     expect(matchOpportunities(opportunities, "")).toEqual([]);
   });
