@@ -16,10 +16,10 @@ import type {
 } from "../domain/types.js";
 import { addDays, isIsoDateTime, localDate, newId, normalizeEmail, nowIso } from "../domain/util.js";
 import { loadConfig, saveConfig, type SalesConfig } from "../rules/config.js";
-import { buildAnswerRequest } from "../ai/skills.js";
+import { ANSWER_PROMPT_VERSION, buildAnswerRequest } from "../ai/skills.js";
 import { LlmError } from "../ai/provider.js";
 import { audit } from "../pipeline/audit.js";
-import type { CoreContext } from "../pipeline/context.js";
+import { logEvent, type CoreContext } from "../pipeline/context.js";
 import { captureText, diffable, processSource, UNRESOLVED_ACCOUNT_NAME } from "../pipeline/ingest.js";
 import { matchOpportunities } from "../pipeline/ask.js";
 import { recomputeContext } from "../pipeline/recompute.js";
@@ -178,17 +178,25 @@ export class SalesService {
       referenceTime: nowIso(this.ctx.clock), timezone: user.timezone || this.config.defaultTimezone,
       question: q, opportunities: context, matchedByName,
     });
+    // Never the question or answer text itself (CoreContext.log's contract: no prompts/raw text).
+    logEvent(this.ctx, "question.asked", {
+      kind: matchedByName ? "matched" : "fallback", candidates: context.length,
+      promptVersion: ANSWER_PROMPT_VERSION,
+    });
     try {
       const res = await this.ctx.llm.complete(request);
+      logEvent(this.ctx, "question.answered", {
+        status: "ok", model: res.model, promptVersion: ANSWER_PROMPT_VERSION,
+        outputTokens: res.usage?.outputTokens,
+      });
       return {
         answer: res.text.trim(), references, matchedByName,
         modelProvider: res.provider, modelName: res.model,
       };
     } catch (err) {
-      return {
-        answer: "", references, matchedByName,
-        error: err instanceof LlmError ? err.message : "AI の呼び出しに失敗しました",
-      };
+      const message = err instanceof LlmError ? err.message : "AI の呼び出しに失敗しました";
+      logEvent(this.ctx, "question.answered", { status: "failed", error: message });
+      return { answer: "", references, matchedByName, error: message };
     }
   }
 

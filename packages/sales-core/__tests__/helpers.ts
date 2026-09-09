@@ -8,11 +8,13 @@ import { fixedClock, newId } from "../src/domain/util.js";
 import { SalesService, type CoreContext } from "../src/index.js";
 import type { CustomerAccount, Opportunity, User, UserRole } from "../src/domain/types.js";
 
-export function makeService(llm: FakeLlmProvider, now = "2026-09-08T01:00:00Z"): SalesService {
+export function makeService(
+  llm: FakeLlmProvider, now = "2026-09-08T01:00:00Z", log?: CoreContext["log"],
+): SalesService {
   const db = new NodeSqliteExecutor();
   migrate(db);
   const repo = new Repository(db);
-  const ctx: CoreContext = { repo, llm, config: loadConfig(repo), clock: fixedClock(now) };
+  const ctx: CoreContext = { repo, llm, config: loadConfig(repo), clock: fixedClock(now), log };
   return new SalesService(ctx);
 }
 

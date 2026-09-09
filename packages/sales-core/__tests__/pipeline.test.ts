@@ -452,4 +452,50 @@ describe("askQuestion (capture box search mode)", () => {
     const user = makeUser(svc.repo, "SALES");
     await expect(svc.askQuestion({ userId: user.id }, "   ")).rejects.toThrow();
   });
+
+  it("logs question.asked then question.answered(ok), with the prompt version but never the question/answer text", async () => {
+    const events: [string, Record<string, unknown> | undefined][] = [];
+    const llm = new FakeLlmProvider(["ABC株式会社の案件は見積送付待ちです。"]);
+    const svc = makeService(llm, NOW, (event, fields) => events.push([event, fields]));
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo, { displayName: "ABC株式会社" });
+    makeOpportunity(svc.repo, account.id, user.id, { title: "ABC株式会社 新機能提案" });
+
+    await svc.askQuestion({ userId: user.id }, "ABC株式会社の状況どうなっている？");
+
+    expect(events).toHaveLength(2);
+    expect(events[0]).toEqual(["question.asked",
+      { kind: "matched", candidates: 1, promptVersion: "answer.v2" }]);
+    expect(events[1]).toEqual(["question.answered",
+      { status: "ok", model: "fake-model", promptVersion: "answer.v2", outputTokens: undefined }]);
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain("ABC株式会社の状況どうなっている");
+    expect(serialized).not.toContain("見積送付待ち");
+  });
+
+  it("logs question.answered(failed) with the error, when the AI call fails", async () => {
+    const events: [string, Record<string, unknown> | undefined][] = [];
+    const llm = new FakeLlmProvider([]); // no scripted response -> FakeLlmProvider throws
+    const svc = makeService(llm, NOW, (event, fields) => events.push([event, fields]));
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    makeOpportunity(svc.repo, account.id, user.id, { title: "案件" });
+
+    await svc.askQuestion({ userId: user.id }, "状況は？");
+
+    expect(events.map(([event]) => event)).toEqual(["question.asked", "question.answered"]);
+    expect(events[1]![1]).toMatchObject({ status: "failed" });
+    expect(events[1]![1]!.error).toBeTruthy();
+  });
+
+  it("does not log when there is no data yet (no AI call is made)", async () => {
+    const events: string[] = [];
+    const llm = new FakeLlmProvider([]);
+    const svc = makeService(llm, NOW, (event) => events.push(event));
+    const user = makeUser(svc.repo, "SALES");
+
+    await svc.askQuestion({ userId: user.id }, "何か動きある？");
+
+    expect(events).toEqual([]);
+  });
 });

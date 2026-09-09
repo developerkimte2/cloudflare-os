@@ -36,6 +36,11 @@ type SalesLogFields = {
   kind?: string;
   error?: unknown;
   sourceType?: string;
+  /** askQuestion (項目 3): opportunities handed to the model as context. */
+  candidates?: number;
+  model?: string;
+  promptVersion?: string;
+  outputTokens?: number;
 };
 
 const logger = createLogger<SalesLogFields>({ component: "gatekeeper.sales.core", vendorId: VENDOR_ID });
