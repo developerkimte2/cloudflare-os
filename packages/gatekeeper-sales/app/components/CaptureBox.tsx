@@ -64,6 +64,13 @@ export function CaptureBox({
   // Explicit options (source type / occurred-at) signal an intentional capture, so a question-like
   // text with options set is still captured rather than treated as a search.
   const isQuestion = !sourceType && !occurredAtLocal && looksLikeQuestion(text);
+  // looksLikeQuestion's keywords (e.g. "状況") can misroute a short, ordinary capture
+  // ("ABC社の状況を共有します。") into search mode; conversely a genuine question can miss its
+  // keyword list or run past the length cap. Rather than tune the keyword list (and risk the
+  // opposite mistake), offer an explicit escape hatch each way instead of guessing harder.
+  const trimmed = text.trim();
+  const hasQuestionMark = trimmed.includes("？") || trimmed.includes("?");
+  const offerAskInstead = !isQuestion && hasQuestionMark && trimmed.length <= 100;
 
   const startBatch = (chunks: string[]) => {
     setBatchChunks(chunks);
@@ -159,13 +166,33 @@ export function CaptureBox({
         </div>
       )}
       <div className="mt-2 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setShowOptions((v) => !v)}
-          className="text-xs text-kumo-subtle hover:text-kumo-default hover:underline"
-        >
-          {showOptions ? "オプションを隠す" : "オプション"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowOptions((v) => !v)}
+            className="text-xs text-kumo-subtle hover:text-kumo-default hover:underline"
+          >
+            {showOptions ? "オプションを隠す" : "オプション"}
+          </button>
+          {isQuestion && (
+            <button
+              type="button"
+              onClick={() => void runCapture(text, undefined)}
+              className="text-xs text-kumo-link hover:underline"
+            >
+              取り込みとして送る
+            </button>
+          )}
+          {offerAskInstead && (
+            <button
+              type="button"
+              onClick={() => void runAsk(text)}
+              className="text-xs text-kumo-link hover:underline"
+            >
+              質問として送る
+            </button>
+          )}
+        </div>
         <button
           type="button"
           disabled={!text.trim() || submitting}
