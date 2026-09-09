@@ -47,6 +47,11 @@ export interface AnswerResult {
    * nothing matched) the most recently updated ones — so the UI can link straight to them.
    */
   references: { id: string; accountName: string; title: string }[];
+  /**
+   * True when `references` was matched by name against the question; false when nothing matched
+   * and the answer falls back to recently-updated opportunities instead (the UI shows a note).
+   */
+  matchedByName: boolean;
   modelProvider?: string;
   modelName?: string;
   error?: string;

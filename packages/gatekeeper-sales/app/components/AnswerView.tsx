@@ -36,6 +36,11 @@ export function AnswerView({
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3">
       <AiAttribution ai={ai} />
+      {!result.matchedByName && result.references.length > 0 && (
+        <p className="text-xs text-kumo-subtle">
+          名前に一致する案件が見つからなかったため、直近の案件をもとに回答しています。
+        </p>
+      )}
       <p className="whitespace-pre-wrap text-sm text-kumo-default">{result.answer}</p>
       {result.references.length > 0 && (
         <div>

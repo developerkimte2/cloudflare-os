@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { buildContextRequest, buildExtractionRequest } from "../src/ai/skills.js";
+import { buildAnswerRequest, buildContextRequest, buildExtractionRequest } from "../src/ai/skills.js";
 import { contextSnapshotSchema, extractionSchema, jsonSchemaOf } from "../src/ai/schema.js";
+import type { OpportunitySummary } from "../src/api/dto.js";
 import type { User } from "../src/domain/types.js";
 
 const submitter: User = {
@@ -157,5 +158,79 @@ describe("buildContextRequest", () => {
     });
     expect(req.user).toContain("previous context: (none)");
     expect(req.user).toContain("(none)");
+  });
+});
+
+describe("buildAnswerRequest", () => {
+  const opportunity: OpportunitySummary = {
+    id: "opp-1", title: "新機能提案", accountId: "acc-1", accountName: "ABC株式会社",
+    accountResolutionStatus: "MANUAL", ownerUserId: "user-1", ownerName: "太郎",
+    collaboratorUserIds: [], lifecycleState: "OPEN", operationalState: "ACTIVE",
+    riskLevel: "MEDIUM", riskReason: "返信が遅い",
+    nextAction: {
+      id: "na-1", opportunityId: "opp-1", assignedUserId: "user-1", actionType: "EMAIL",
+      title: "見積書を送付", purpose: "商談を進める", dueAt: "2026-09-15T09:00:00Z",
+      priority: "NORMAL", status: "OPEN", generatedBy: "AI",
+      createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z",
+    },
+    lastMeaningfulActivityAt: "2026-09-08T01:00:00Z",
+    updatedAt: "2026-09-08T01:00:00Z", version: 1,
+  };
+
+  it("outputs plain text (not JSON mode) at temperature 0", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
+    });
+    expect(req.json).toBeFalsy();
+    expect(req.temperature).toBe(0);
+  });
+
+  it("renders next-action due dates and last-activity timestamps in human Japanese, never raw ISO", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
+    });
+    expect(req.user).toContain("2026年9月15日18時");
+    expect(req.user).toContain("2026年9月8日10時");
+    // The reference-time header line legitimately carries a raw ISO instant; the opportunity data
+    // handed to the model (everything inside SOURCE) must not.
+    const sourceBlock = req.user.slice(req.user.indexOf("=== SOURCE ==="));
+    expect(sourceBlock).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(req.system).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("tells the model the opportunities matched the question by name", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
+    });
+    expect(req.user).toContain("question に名前が一致した案件:");
+    expect(req.user).not.toContain("質問に一致する案件名は見つからなかった");
+  });
+
+  it("tells the model when opportunities are a recent-activity fallback, not a name match", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "全体としてどうなっている？", opportunities: [opportunity], matchedByName: false,
+    });
+    expect(req.user).toContain("質問に一致する案件名は見つからなかった");
+    expect(req.system).toContain("その旨を一文で正直に伝えてから");
+  });
+
+  it("shows '(なし)' when there are no opportunities to answer from", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [], matchedByName: false,
+    });
+    expect(req.user).toContain("(なし)");
+  });
+
+  it("includes the untrusted-input rule in the system prompt", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
+    });
+    expect(req.system).toContain("信頼できない入力データ");
   });
 });

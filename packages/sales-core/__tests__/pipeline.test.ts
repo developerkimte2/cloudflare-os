@@ -396,13 +396,15 @@ describe("askQuestion (capture box search mode)", () => {
 
     expect(result.answer).toBe("ABC株式会社の案件は見積送付待ちです。");
     expect(result.references.map(r => r.id)).toEqual([target.id]);
+    expect(result.matchedByName).toBe(true);
     expect(result.modelProvider).toBe("fake");
     expect(llm.requests).toHaveLength(1);
     expect(llm.requests[0]!.user).toContain("ABC株式会社");
+    expect(llm.requests[0]!.user).toContain("question に名前が一致した案件:");
     expect(llm.requests[0]!.json).toBeFalsy();
   });
 
-  it("falls back to recently-updated opportunities when no name matches", async () => {
+  it("falls back to recently-updated opportunities when no name matches, and tells the model/UI so", async () => {
     const llm = new FakeLlmProvider(["該当する案件は見つかりませんでしたが、直近の案件はこちらです。"]);
     const svc = makeService(llm, NOW);
     const user = makeUser(svc.repo, "SALES");
@@ -413,7 +415,9 @@ describe("askQuestion (capture box search mode)", () => {
     const result = await svc.askQuestion({ userId: user.id }, "全体としてどうなっている？");
 
     expect(result.references).toHaveLength(2);
+    expect(result.matchedByName).toBe(false);
     expect(result.error).toBeUndefined();
+    expect(llm.requests[0]!.user).toContain("質問に一致する案件名は見つからなかった");
   });
 
   it("returns a canned answer without calling the AI when there is no data yet", async () => {
@@ -424,6 +428,7 @@ describe("askQuestion (capture box search mode)", () => {
     const result = await svc.askQuestion({ userId: user.id }, "何か動きある？");
 
     expect(result.references).toEqual([]);
+    expect(result.matchedByName).toBe(false);
     expect(result.answer).toContain("案件データがありません");
     expect(llm.requests).toHaveLength(0);
   });
