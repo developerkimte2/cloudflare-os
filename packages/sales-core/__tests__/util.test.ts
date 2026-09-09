@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, canonicalizeText, clamp01, domainOfEmail, fixedClock, formatLocal, isIsoDate,
-  isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso, sha256Hex,
+  addDays, canonicalizeText, clamp01, domainOfEmail, fixedClock, formatDateTimeJa, formatLocal,
+  isIsoDate, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso, sha256Hex,
 } from "../src/domain/util.js";
 
 describe("normalizeName", () => {
@@ -113,6 +113,24 @@ describe("formatLocal / localDate (Asia/Tokyo)", () => {
     // 2026-09-07T15:30:00Z = 2026-09-08T00:30 JST -> local date is the 8th, not the 7th.
     expect(localDate("2026-09-07T15:30:00Z", "Asia/Tokyo")).toBe("2026-09-08");
     expect(localDate("2026-09-07T10:00:00Z", "Asia/Tokyo")).toBe("2026-09-07");
+  });
+});
+
+describe("formatDateTimeJa (Asia/Tokyo)", () => {
+  it("renders an on-the-hour instant without minutes (e.g. the extraction prompt's 18:00 default)", () => {
+    // 2026-09-15T09:00:00Z = 2026-09-15T18:00 JST.
+    expect(formatDateTimeJa("2026-09-15T09:00:00Z", "Asia/Tokyo")).toBe("2026年9月15日18時");
+  });
+
+  it("includes minutes when not on the hour", () => {
+    // 2026-09-15T09:30:00Z = 2026-09-15T18:30 JST.
+    expect(formatDateTimeJa("2026-09-15T09:30:00Z", "Asia/Tokyo")).toBe("2026年9月15日18時30分");
+  });
+
+  it("never leaks a raw ISO timestamp or a confidence number", () => {
+    const formatted = formatDateTimeJa("2026-09-15T09:00:00+09:00", "Asia/Tokyo");
+    expect(formatted).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(formatted).not.toContain("confidence");
   });
 });
 

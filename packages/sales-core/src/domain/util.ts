@@ -85,13 +85,19 @@ export function formatLocal(iso: string, timeZone: string): string {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")} (${get("weekday")}, ${timeZone})`;
 }
 
-/** Human-facing Japanese rendering for review/question text, e.g. "9月15日(火) 18:00". */
+/**
+ * Human-facing Japanese rendering for review/question text, e.g. "2026年9月15日18時" (minutes are
+ * omitted when exactly on the hour, e.g. the extraction prompt's "time-less date defaults to 18:00"
+ * rule; "2026年9月15日18時30分" otherwise).
+ */
 export function formatDateTimeJa(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
     timeZone, hourCycle: "h23",
-    month: "long", day: "numeric", weekday: "short",
-    hour: "2-digit", minute: "2-digit",
-  }).format(new Date(iso));
+    year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric",
+  }).formatToParts(new Date(iso));
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? "";
+  const minute = Number(get("minute"));
+  return `${get("year")}年${get("month")}月${get("day")}日${get("hour")}時${minute ? `${minute}分` : ""}`;
 }
 
 /** Calendar date (`YYYY-MM-DD`) of an instant in a timezone. */
