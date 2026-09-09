@@ -21,8 +21,8 @@ import type {
   SupportedResource, VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
 import type {
-  AIContextSnapshot, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto, ManagerSummary,
-  NextAction, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
+  AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto,
+  ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
   OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput, ReviewDto,
   ReviewResolution, SalesConfig, SourceDocument, TodayView, UserDto,
 } from "@gadgets/sales-core";
@@ -466,6 +466,7 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   register(input: RegisterIdentityInput): Promise<UserDto> { return this.core.register(this.caller, input); }
   getToday(): Promise<TodayView> { return this.core.getToday(this.caller); }
   capture(text: string, options?: CaptureOptions): Promise<CaptureResult> { return this.core.capture(this.caller, text, options); }
+  askQuestion(question: string): Promise<AnswerResult> { return this.core.askQuestion(this.caller, question); }
   getCapture(sourceId: string): Promise<CaptureResult> { return this.core.getCapture(this.caller, sourceId); }
   listCaptures(limit?: number): Promise<SourceDocument[]> { return this.core.listCaptures(this.caller, limit); }
   retryCapture(sourceId: string): Promise<CaptureResult> { return this.core.retryCapture(this.caller, sourceId); }

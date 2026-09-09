@@ -7,17 +7,17 @@
  * account is not yet bound to a Sales OS user, only `whoAmI()` and `register()` succeed.
  */
 import type {
-  AIContextSnapshot, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto, JsonValue,
-  ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput, ReviewDto,
-  ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
+  AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto,
+  JsonValue, ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch,
+  OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput,
+  ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
 } from "@gadgets/sales-core";
 
 export type {
-  AIContextSnapshot, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto, JsonValue,
-  ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput, ReviewDto,
-  ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
+  AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto,
+  JsonValue, ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch,
+  OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput,
+  ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
 };
 
 /** What the app learns about the caller on load. */
@@ -41,6 +41,8 @@ export interface SalesManagementApi {
   getToday(): Promise<TodayView>;
 
   capture(text: string, options?: CaptureOptions): Promise<CaptureResult>;
+  /** Answers a question about existing opportunities instead of capturing the text (does not store anything). */
+  askQuestion(question: string): Promise<AnswerResult>;
   getCapture(sourceId: string): Promise<CaptureResult>;
   listCaptures(limit?: number): Promise<SourceDocument[]>;
   retryCapture(sourceId: string): Promise<CaptureResult>;

@@ -11,10 +11,10 @@ import { validateRpc } from "capnweb-validate";
 import { createLogger } from "@gadgets/backend-utils/logger";
 import {
   DurableObjectSqlExecutor, Repository, SalesService, loadConfig, migrate, systemClock,
-  type AIContextSnapshot, type Actor, type AuditLog, type CaptureOptions, type CaptureResult,
-  type Commitment, type ConfigDto, type CoreContext, type ManagerSummary, type NextAction,
-  type NextActionFilter, type NextActionInput, type NextActionPatch, type OpportunityDetail,
-  type OpportunityFilter, type OpportunityPatch, type OpportunitySummary,
+  type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog, type CaptureOptions,
+  type CaptureResult, type Commitment, type ConfigDto, type CoreContext, type ManagerSummary,
+  type NextAction, type NextActionFilter, type NextActionInput, type NextActionPatch,
+  type OpportunityDetail, type OpportunityFilter, type OpportunityPatch, type OpportunitySummary,
   type RegisterIdentityInput, type ReviewDto, type ReviewResolution, type SalesConfig,
   type SourceDocument, type TodayView, type UserDto, toUserDto,
 } from "@gadgets/sales-core";
@@ -109,6 +109,10 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
 
   async capture(caller: Caller, text: string, options?: CaptureOptions): Promise<CaptureResult> {
     return this.#service.capture(this.#actor(caller), text, options ?? {});
+  }
+
+  async askQuestion(caller: Caller, question: string): Promise<AnswerResult> {
+    return this.#service.askQuestion(this.#actor(caller), question);
   }
 
   /** Stores the raw text without processing (used by the approval flow). */

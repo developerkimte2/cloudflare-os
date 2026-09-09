@@ -4,3 +4,4 @@ export * from "./ingest.js";
 export * from "./undo.js";
 export * from "./recompute.js";
 export * from "./split.js";
+export * from "./ask.js";

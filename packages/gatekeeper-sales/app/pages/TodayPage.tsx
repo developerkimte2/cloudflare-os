@@ -71,6 +71,9 @@ export default function TodayPage({
     return result;
   };
 
+  // Read-only: unlike capture(), never mutates data, so no refresh() after it.
+  const ask = (question: string) => runAction(() => api.askQuestion(question), "検索に失敗しました");
+
   const retryCapture = async (sourceId: string) => {
     setRetrying((current) => ({ ...current, [sourceId]: true }));
     const result = await runAction(() => api.retryCapture(sourceId), "再試行に失敗しました");
@@ -116,6 +119,7 @@ export default function TodayPage({
           timezone={timezone}
           ai={ai}
           onCapture={capture}
+          onAsk={ask}
           onOpenOpportunity={onOpenOpportunity}
           onResolveReview={resolveReview}
           onDismissReview={dismissReview}

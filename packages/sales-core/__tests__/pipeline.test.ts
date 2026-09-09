@@ -381,3 +381,70 @@ describe("getToday bucketing", () => {
     expect(today.attention.some(a => a.kind === "COMMITMENT_OVERDUE" && a.opportunity.id === freshOpp.id)).toBe(true);
   });
 });
+
+describe("askQuestion (capture box search mode)", () => {
+  it("answers using only the name-matched opportunity as context", async () => {
+    const llm = new FakeLlmProvider(["ABC株式会社の案件は見積送付待ちです。"]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const abc = makeAccount(svc.repo, { displayName: "ABC株式会社" });
+    const other = makeAccount(svc.repo, { displayName: "合同会社ブルームワークス" });
+    const target = makeOpportunity(svc.repo, abc.id, user.id, { title: "ABC株式会社 新機能提案" });
+    makeOpportunity(svc.repo, other.id, user.id, { title: "合同会社ブルームワークス 商談" });
+
+    const result = await svc.askQuestion({ userId: user.id }, "ABC株式会社の状況どうなっている？");
+
+    expect(result.answer).toBe("ABC株式会社の案件は見積送付待ちです。");
+    expect(result.references.map(r => r.id)).toEqual([target.id]);
+    expect(result.modelProvider).toBe("fake");
+    expect(llm.requests).toHaveLength(1);
+    expect(llm.requests[0]!.user).toContain("ABC株式会社");
+    expect(llm.requests[0]!.json).toBeFalsy();
+  });
+
+  it("falls back to recently-updated opportunities when no name matches", async () => {
+    const llm = new FakeLlmProvider(["該当する案件は見つかりませんでしたが、直近の案件はこちらです。"]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    makeOpportunity(svc.repo, account.id, user.id, { title: "案件1" });
+    makeOpportunity(svc.repo, account.id, user.id, { title: "案件2" });
+
+    const result = await svc.askQuestion({ userId: user.id }, "全体としてどうなっている？");
+
+    expect(result.references).toHaveLength(2);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns a canned answer without calling the AI when there is no data yet", async () => {
+    const llm = new FakeLlmProvider([]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+
+    const result = await svc.askQuestion({ userId: user.id }, "何か動きある？");
+
+    expect(result.references).toEqual([]);
+    expect(result.answer).toContain("案件データがありません");
+    expect(llm.requests).toHaveLength(0);
+  });
+
+  it("returns an error result (not a thrown error) when the AI call fails", async () => {
+    const llm = new FakeLlmProvider([]); // no scripted response -> FakeLlmProvider throws
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    makeOpportunity(svc.repo, account.id, user.id, { title: "案件" });
+
+    const result = await svc.askQuestion({ userId: user.id }, "状況は？");
+
+    expect(result.answer).toBe("");
+    expect(result.error).toBeTruthy();
+  });
+
+  it("rejects a blank question", async () => {
+    const llm = new FakeLlmProvider([]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    await expect(svc.askQuestion({ userId: user.id }, "   ")).rejects.toThrow();
+  });
+});

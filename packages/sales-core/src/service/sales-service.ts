@@ -4,10 +4,10 @@
  * here is synchronous except the steps that call the LLM.
  */
 import type {
-  Actor, AttentionItem, CaptureOptions, CaptureResult, ConfigDto, ManagerSummary, NextActionFilter,
-  NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
-  OpportunitySummary, RegisterIdentityInput, ReviewDto, ReviewResolution, TodayAction, TodayView,
-  UserDto,
+  Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto, ManagerSummary,
+  NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter,
+  OpportunityPatch, OpportunitySummary, RegisterIdentityInput, ReviewDto, ReviewResolution,
+  TodayAction, TodayView, UserDto,
 } from "../api/dto.js";
 import { toUserDto } from "../api/dto.js";
 import type {
@@ -16,9 +16,12 @@ import type {
 } from "../domain/types.js";
 import { addDays, isIsoDateTime, localDate, newId, normalizeEmail, nowIso } from "../domain/util.js";
 import { loadConfig, saveConfig, type SalesConfig } from "../rules/config.js";
+import { buildAnswerRequest } from "../ai/skills.js";
+import { LlmError } from "../ai/provider.js";
 import { audit } from "../pipeline/audit.js";
 import type { CoreContext } from "../pipeline/context.js";
 import { captureText, diffable, processSource, UNRESOLVED_ACCOUNT_NAME } from "../pipeline/ingest.js";
+import { matchOpportunities } from "../pipeline/ask.js";
 import { recomputeContext } from "../pipeline/recompute.js";
 import { revertSource } from "../pipeline/undo.js";
 
@@ -143,6 +146,38 @@ export class SalesService {
       userId: user.id, text, sourceType: options.sourceType, occurredAt: options.occurredAt,
     });
     return { sourceId: receipt.sourceId, duplicate: receipt.duplicate };
+  }
+
+  /**
+   * Answers a free-text question about existing opportunities ("ABC社の状況どうなっている？") instead
+   * of capturing the text. Never throws on AI failure (mirrors `capture`'s `error` field) — the
+   * caller (the capture box) always gets something to show.
+   */
+  async askQuestion(actor: Actor, question: string): Promise<AnswerResult> {
+    const user = this.requireUser(actor);
+    const q = question.trim();
+    if (!q) throw new TypeError("質問を入力してください");
+    const visible = this.repo.listOpportunitiesVisibleTo(user, { limit: 500 }).map(o => this.summarize(o));
+    if (visible.length === 0) {
+      return { answer: "まだ案件データがありません。取り込みを行うと、ここで状況を聞けるようになります。", references: [] };
+    }
+    const matched = matchOpportunities(visible, q);
+    // Nothing named in the question matched: fall back to recent activity so the AI can still say
+    // something useful (or honestly say it couldn't find the case) instead of answering from nothing.
+    const context = matched.length > 0
+      ? matched
+      : [...visible].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
+    const references = context.map(o => ({ id: o.id, accountName: o.accountName, title: o.title }));
+    const request = buildAnswerRequest({
+      referenceTime: nowIso(this.ctx.clock), timezone: user.timezone || this.config.defaultTimezone,
+      question: q, opportunities: context,
+    });
+    try {
+      const res = await this.ctx.llm.complete(request);
+      return { answer: res.text.trim(), references, modelProvider: res.provider, modelName: res.model };
+    } catch (err) {
+      return { answer: "", references, error: err instanceof LlmError ? err.message : "AI の呼び出しに失敗しました" };
+    }
   }
 
   /** Drops a source that was received but never processed (e.g. an approval was rejected). */

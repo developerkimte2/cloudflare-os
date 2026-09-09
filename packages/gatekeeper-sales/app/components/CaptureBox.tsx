@@ -3,8 +3,10 @@ import { useMemo, useState } from "react";
 // unlike "@gadgets/sales-core" (the package index), which would drag db/node-sqlite's
 // `node:sqlite` into the browser bundle (FB_20260908 D).
 import { splitCaptureText } from "@gadgets/sales-core/pipeline/split";
-import type { CaptureOptions, CaptureResult, WhoAmI } from "../../src/management-types";
+import { looksLikeQuestion } from "@gadgets/sales-core/pipeline/ask";
+import type { AnswerResult, CaptureOptions, CaptureResult, WhoAmI } from "../../src/management-types";
 import { localInputToIso } from "../format";
+import { AnswerView } from "./AnswerView";
 import { BatchCaptureView } from "./BatchCaptureView";
 import { CaptureResultView } from "./CaptureResultView";
 
@@ -20,11 +22,17 @@ const SOURCE_TYPE_OPTIONS: Array<{ value: SourceTypeOption; label: string }> = [
 /**
  * The "話す/貼る" capture box (設計書 UX-02/03): a single textarea plus optional, collapsed metadata.
  * Nothing here is required beyond the text itself.
+ *
+ * Also doubles as a search box: a short line that reads as a question ("ABC社の状況どうなっている？")
+ * is routed to `onAsk` instead of `onCapture` (`looksLikeQuestion`, deterministic — see
+ * `pipeline/ask.ts`), so the same input answers questions about existing opportunities instead of
+ * being captured as a new record.
  */
 export function CaptureBox({
   timezone,
   ai,
   onCapture,
+  onAsk,
   onOpenOpportunity,
   onResolveReview,
   onDismissReview,
@@ -32,6 +40,7 @@ export function CaptureBox({
   timezone: string;
   ai: WhoAmI["ai"];
   onCapture: (text: string, options?: CaptureOptions) => Promise<CaptureResult | undefined>;
+  onAsk: (question: string) => Promise<AnswerResult | undefined>;
   onOpenOpportunity: (opportunityId: string) => void;
   onResolveReview: (id: string, optionId: string, input?: Record<string, unknown>) => void | Promise<void>;
   onDismissReview: (id: string) => void | Promise<void>;
@@ -42,6 +51,7 @@ export function CaptureBox({
   const [occurredAtLocal, setOccurredAtLocal] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CaptureResult>();
+  const [answer, setAnswer] = useState<AnswerResult>();
   const [lastText, setLastText] = useState("");
   const [lastOptions, setLastOptions] = useState<CaptureOptions | undefined>();
   // Set once the user opts into taking a multi-record paste one record at a time; while set, the
@@ -51,24 +61,18 @@ export function CaptureBox({
   const split = useMemo(() => splitCaptureText(text), [text]);
   const headingSplit = split.rule === "heading" && split.chunks.length >= 2 ? split.chunks : undefined;
   const blankLinesSplit = split.rule === "blank-lines" ? split.chunks : undefined;
+  // Explicit options (source type / occurred-at) signal an intentional capture, so a question-like
+  // text with options set is still captured rather than treated as a search.
+  const isQuestion = !sourceType && !occurredAtLocal && looksLikeQuestion(text);
 
   const startBatch = (chunks: string[]) => {
     setBatchChunks(chunks);
     setText("");
     setResult(undefined);
+    setAnswer(undefined);
   };
 
-  const submit = async (overrideText?: string, overrideOptions?: CaptureOptions) => {
-    const body = overrideText ?? text;
-    if (!body.trim() || submitting) return;
-    const options: CaptureOptions | undefined =
-      overrideOptions ??
-      (sourceType || occurredAtLocal
-        ? {
-            sourceType: sourceType || undefined,
-            occurredAt: occurredAtLocal ? localInputToIso(occurredAtLocal, timezone) : undefined,
-          }
-        : undefined);
+  const runCapture = async (body: string, options?: CaptureOptions) => {
     setSubmitting(true);
     setLastText(body);
     setLastOptions(options);
@@ -76,11 +80,40 @@ export function CaptureBox({
       const captured = await onCapture(body, options);
       if (captured) {
         setResult(captured);
+        setAnswer(undefined);
         setText("");
       }
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const runAsk = async (question: string) => {
+    setSubmitting(true);
+    setLastText(question);
+    try {
+      const answered = await onAsk(question);
+      if (answered) {
+        setAnswer(answered);
+        setResult(undefined);
+        setText("");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submit = () => {
+    if (!text.trim() || submitting) return;
+    if (isQuestion) return void runAsk(text);
+    const options: CaptureOptions | undefined =
+      sourceType || occurredAtLocal
+        ? {
+            sourceType: sourceType || undefined,
+            occurredAt: occurredAtLocal ? localInputToIso(occurredAtLocal, timezone) : undefined,
+          }
+        : undefined;
+    return void runCapture(text, options);
   };
 
   if (batchChunks) {
@@ -102,7 +135,7 @@ export function CaptureBox({
       <textarea
         value={text}
         onChange={(event) => setText(event.currentTarget.value)}
-        placeholder="貼る、または書く（メール、議事録、雑な一言でもOK）"
+        placeholder="貼る、または書く（メール、議事録、雑な一言でもOK）。「ABC社の状況どうなっている？」のように聞くこともできます"
         rows={4}
         className="w-full resize-none rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm text-kumo-default outline-none placeholder:text-kumo-inactive focus:border-kumo-ring focus:ring-1 focus:ring-kumo-ring/20"
       />
@@ -118,7 +151,7 @@ export function CaptureBox({
           </button>
           <button
             type="button"
-            onClick={() => void submit()}
+            onClick={submit}
             className="press rounded-md border border-kumo-line px-2 py-1 font-medium text-kumo-default hover:bg-kumo-base"
           >
             1 件として取り込む
@@ -136,10 +169,10 @@ export function CaptureBox({
         <button
           type="button"
           disabled={!text.trim() || submitting}
-          onClick={() => void submit()}
+          onClick={submit}
           className="press rounded-lg bg-kumo-brand px-4 py-2 text-sm font-medium text-white hover:bg-kumo-brand-hover disabled:opacity-50"
         >
-          {submitting ? "取り込み中…" : "取り込む"}
+          {submitting ? (isQuestion ? "検索中…" : "取り込み中…") : isQuestion ? "検索する" : "取り込む"}
         </button>
       </div>
       {showOptions && (
@@ -187,7 +220,15 @@ export function CaptureBox({
           onOpenOpportunity={onOpenOpportunity}
           onResolveReview={onResolveReview}
           onDismissReview={onDismissReview}
-          onRetry={() => void submit(lastText, lastOptions)}
+          onRetry={() => void runCapture(lastText, lastOptions)}
+        />
+      )}
+      {answer && (
+        <AnswerView
+          result={answer}
+          ai={ai}
+          onOpenOpportunity={onOpenOpportunity}
+          onRetry={() => void runAsk(lastText)}
         />
       )}
     </div>

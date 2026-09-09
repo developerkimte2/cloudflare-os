@@ -38,6 +38,20 @@ export interface CaptureOptions {
   occurredAt?: string;
 }
 
+/** Result of `SalesService.askQuestion` (「＊＊の状況どうなっている？」). */
+export interface AnswerResult {
+  /** Empty when `error` is set. */
+  answer: string;
+  /**
+   * Opportunities used as context for the answer — name-matched against the question, or (when
+   * nothing matched) the most recently updated ones — so the UI can link straight to them.
+   */
+  references: { id: string; accountName: string; title: string }[];
+  modelProvider?: string;
+  modelName?: string;
+  error?: string;
+}
+
 export interface CaptureResult {
   source: SourceDocument;
   duplicate: boolean;
