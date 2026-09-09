@@ -76,6 +76,27 @@ describe("matchOpportunities", () => {
     expect(matchOpportunities(opps, "ABC株式会社の状況どうなっている？").map(o => o.id)).toEqual(["1"]);
   });
 
+  it("matches when the question drops the account's corporate suffix (株式会社 etc.)", () => {
+    const opps = [{ id: "1", accountName: "株式会社ネオリンク", title: "新機能提案" }];
+    // A colloquial question very often omits "株式会社" even though the registered name carries it.
+    expect(matchOpportunities(opps, "ネオリンクの状況どうなっている？").map(o => o.id)).toEqual(["1"]);
+  });
+
+  it("does not use the corporate-suffix-stripped match when the core name is still too short", () => {
+    const opps = [{ id: "1", accountName: "株式会社A", title: "新機能提案" }];
+    expect(matchOpportunities(opps, "Aの状況は？")).toEqual([]);
+  });
+
+  it("still prefers an exact account-name match over the suffix-stripped fallback", () => {
+    const opps = [
+      { id: "1", accountName: "株式会社ネオリンク", title: "新機能提案" },
+      { id: "2", accountName: "有限会社ネオリンク商会", title: "別件" },
+    ];
+    // The question spells out the full registered name of #1; #2's core name ("ネオリンク商会")
+    // is not a substring of the (normalized) question, so it must not be pulled in.
+    expect(matchOpportunities(opps, "株式会社ネオリンクの状況どうなっている？").map(o => o.id)).toEqual(["1"]);
+  });
+
   it("handles an empty question without throwing", () => {
     expect(matchOpportunities(opportunities, "")).toEqual([]);
   });
