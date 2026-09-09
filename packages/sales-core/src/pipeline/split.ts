@@ -10,7 +10,7 @@
  */
 
 /** How the text was recognized as multiple records, if at all. */
-export type SplitRule = "heading" | "blank-lines" | "none";
+export type SplitRule = "heading" | "numbered" | "blank-lines" | "none";
 
 export interface SplitResult {
   chunks: string[];
@@ -26,8 +26,27 @@ const MAX_CHUNKS = 100;
 /** Below this, a blank-line-delimited "chunk" is probably a stray paragraph break, not a record. */
 const MIN_BLANK_CHUNK_LENGTH = 20;
 
+/** A leading list-number marker at the start of a paragraph, e.g. "1. ", "12)", "3、", "4．". */
+const NUMBERED_START_RE = /^(\d{1,3})[.．、)]\s*/;
+
+/**
+ * A short numbered list ("1. 見積送付 2. 電話フォロー") is a completely ordinary way to lay out one
+ * customer's next actions inside a single record — not evidence of multiple records. Only treat
+ * sequential numbering as "多分割" once there are enough items that a single conversation's own
+ * to-do list is an implausible explanation.
+ */
+const MIN_NUMBERED_CHUNKS = 5;
+
 function nonEmpty(s: string): boolean {
   return s.trim().length > 0;
+}
+
+/** True when `pieces[0]` starts with "1.", `pieces[1]` with "2.", …, in strict order with no gaps. */
+function isSequentiallyNumbered(pieces: string[]): boolean {
+  return pieces.every((piece, i) => {
+    const m = NUMBERED_START_RE.exec(piece);
+    return m !== null && Number(m[1]) === i + 1;
+  });
 }
 
 /**
@@ -37,10 +56,15 @@ function nonEmpty(s: string): boolean {
  *   sample "営業日報" fixtures use). Each chunk starts at a heading line and runs to the next one
  *   (or the end); any text before the first heading becomes its own leading chunk if non-blank.
  *   Safe to offer automatically: a real heading line essentially never appears by accident.
- * - `rule: "blank-lines"` — no headings, but two-or-more blank lines split the text into 2-100
- *   pieces that are all at least `MIN_BLANK_CHUNK_LENGTH` characters. This is only a *candidate*:
- *   a single email or meeting note commonly has blank-line paragraphs, so the caller must offer
- *   this as an opt-in choice, never apply it by default.
+ * - `rule: "numbered"` — no headings, but blank lines split the text into 5+ pieces that are each
+ *   sequentially numbered from 1 ("1. ...", "2. ...", …) at the start. Also safe to offer
+ *   automatically: unlike a short numbered to-do list, five-plus sequentially numbered paragraphs
+ *   is implausible as one person's notes about a single case (see `MIN_NUMBERED_CHUNKS`).
+ * - `rule: "blank-lines"` — no headings and not sequentially numbered, but two-or-more blank lines
+ *   split the text into 2-100 pieces that are all at least `MIN_BLANK_CHUNK_LENGTH` characters. This
+ *   is only a *candidate*: a single email or meeting note commonly has blank-line paragraphs (and a
+ *   short numbered to-do list falls back here too, below `MIN_NUMBERED_CHUNKS`), so the caller must
+ *   offer this as an opt-in choice, never apply it by default.
  * - `rule: "none"` — nothing recognized; `chunks` is `[text]` unchanged.
  */
 export function splitCaptureText(text: string): SplitResult {
@@ -72,6 +96,9 @@ export function splitCaptureText(text: string): SplitResult {
     .filter(nonEmpty)
     .slice(0, MAX_CHUNKS);
   if (blankPieces.length >= 2 && blankPieces.every(piece => piece.length >= MIN_BLANK_CHUNK_LENGTH)) {
+    if (blankPieces.length >= MIN_NUMBERED_CHUNKS && isSequentiallyNumbered(blankPieces)) {
+      return { chunks: blankPieces, rule: "numbered" };
+    }
     return { chunks: blankPieces, rule: "blank-lines" };
   }
 

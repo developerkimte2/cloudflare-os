@@ -93,4 +93,75 @@ describe("splitCaptureText", () => {
   it("handles empty text without throwing", () => {
     expect(splitCaptureText("")).toEqual({ chunks: [""], rule: "none" });
   });
+
+  describe("numbered lists (「1. …」形式, 誤解を避けるための境界)", () => {
+    it("recognizes 5+ blank-line-separated paragraphs sequentially numbered from 1 (a numbered daily-report batch)", () => {
+      const report = (i: number) =>
+        `${i}. 株式会社サンプル${i}の担当者${i}さんと話しました。連絡先はsample${i}@example.comです。案件について説明しました。`;
+      const text = Array.from({ length: 6 }, (_, i) => report(i + 1)).join("\n\n");
+
+      const result = splitCaptureText(text);
+      expect(result.rule).toBe("numbered");
+      expect(result.chunks).toHaveLength(6);
+      expect(result.chunks[0]).toContain("1. 株式会社サンプル1");
+      expect(result.chunks[5]).toContain("6. 株式会社サンプル6");
+    });
+
+    it("accepts common numbering styles: '1)' 、'1、' 、'1．' as well as '1. '", () => {
+      const paragraphs = [
+        "1) 株式会社サンプルAの田中さんと話しました。案件について説明しました。連絡先は聞けていません。",
+        "2、株式会社サンプルBの佐藤さんと話しました。案件について説明しました。連絡先は聞けていません。",
+        "3．株式会社サンプルCの鈴木さんと話しました。案件について説明しました。連絡先は聞けていません。",
+        "4. 株式会社サンプルDの高橋さんと話しました。案件について説明しました。連絡先は聞けていません。",
+        "5. 株式会社サンプルEの伊藤さんと話しました。案件について説明しました。連絡先は聞けていません。",
+      ];
+      const result = splitCaptureText(paragraphs.join("\n\n"));
+      expect(result.rule).toBe("numbered");
+      expect(result.chunks).toHaveLength(5);
+    });
+
+    it("does NOT treat a short numbered to-do list for ONE case as multiple records (誤解防止, below MIN_NUMBERED_CHUNKS)", () => {
+      // A single customer's next actions, laid out as a numbered list - very ordinary, must stay
+      // one record. Falls back to rule=blank-lines (an opt-in candidate), never auto-applied.
+      const text = [
+        "ABC株式会社の山田様と打合せ。今後の対応は以下の通り。",
+        "",
+        "1. 見積書を送付する",
+        "",
+        "2. 来週電話でフォローする",
+        "",
+        "3. 次回訪問の日程を調整する",
+      ].join("\n");
+
+      const result = splitCaptureText(text);
+      expect(result.rule).not.toBe("numbered");
+    });
+
+    it("does not treat non-sequential numbering (gaps, out of order, or not starting at 1) as a numbered batch", () => {
+      const paragraphs = (nums: number[]) =>
+        nums.map(n => `${n}. 株式会社サンプル${n}の担当者と話しました。案件について説明しました。詳細略。`).join("\n\n");
+
+      // Starts at 2, not 1.
+      expect(splitCaptureText(paragraphs([2, 3, 4, 5, 6])).rule).toBe("blank-lines");
+      // Skips 3.
+      expect(splitCaptureText(paragraphs([1, 2, 4, 5, 6])).rule).toBe("blank-lines");
+      // Out of order.
+      expect(splitCaptureText(paragraphs([1, 3, 2, 4, 5])).rule).toBe("blank-lines");
+    });
+
+    it("does not treat 4 sequentially-numbered paragraphs as a numbered batch (below MIN_NUMBERED_CHUNKS=5)", () => {
+      const report = (i: number) =>
+        `${i}. 株式会社サンプル${i}の担当者と話しました。案件について詳しく説明しました。詳細は省略します。`;
+      const text = Array.from({ length: 4 }, (_, i) => report(i + 1)).join("\n\n");
+      expect(splitCaptureText(text).rule).toBe("blank-lines");
+    });
+
+    it("caps numbered chunks at 100, same as the other rules", () => {
+      const report = (i: number) => `${i}. これは十分に長いテスト用の営業記録です番号${i}`;
+      const text = Array.from({ length: 105 }, (_, i) => report(i + 1)).join("\n\n");
+      const result = splitCaptureText(text);
+      expect(result.rule).toBe("numbered");
+      expect(result.chunks).toHaveLength(100);
+    });
+  });
 });

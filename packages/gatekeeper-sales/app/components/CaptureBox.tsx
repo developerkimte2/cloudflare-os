@@ -59,7 +59,12 @@ export function CaptureBox({
   const [batchChunks, setBatchChunks] = useState<string[]>();
 
   const split = useMemo(() => splitCaptureText(text), [text]);
-  const headingSplit = split.rule === "heading" && split.chunks.length >= 2 ? split.chunks : undefined;
+  // "heading" (【…】 lines) and "numbered" (5+ sequentially-numbered paragraphs) are both safe to
+  // offer automatically — see split.ts's own docs for why each is low-risk for a false positive.
+  const autoSplit =
+    (split.rule === "heading" || split.rule === "numbered") && split.chunks.length >= 2
+      ? split.chunks
+      : undefined;
   const blankLinesSplit = split.rule === "blank-lines" ? split.chunks : undefined;
   // Explicit options (source type / occurred-at) signal an intentional capture, so a question-like
   // text with options set is still captured rather than treated as a search.
@@ -146,15 +151,15 @@ export function CaptureBox({
         rows={4}
         className="w-full resize-none rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm text-kumo-default outline-none placeholder:text-kumo-inactive focus:border-kumo-ring focus:ring-1 focus:ring-kumo-ring/20"
       />
-      {headingSplit && (
+      {autoSplit && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-kumo-tint px-2.5 py-2 text-xs text-kumo-subtle">
-          <span>{headingSplit.length} 件の記録が含まれているようです。</span>
+          <span>{autoSplit.length} 件の記録が含まれているようです。</span>
           <button
             type="button"
-            onClick={() => startBatch(headingSplit)}
+            onClick={() => startBatch(autoSplit)}
             className="press rounded-md bg-kumo-brand px-2 py-1 font-medium text-white hover:bg-kumo-brand-hover"
           >
-            {headingSplit.length} 件に分けて取り込む
+            {autoSplit.length} 件に分けて取り込む
           </button>
           <button
             type="button"
