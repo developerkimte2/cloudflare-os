@@ -4,8 +4,8 @@
  */
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, Commitment, CustomerAccount,
-  CustomerPerson, ExternalIdentity, LifecycleState, NextAction, NextActionStatus, Opportunity,
-  ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
+  CustomerPerson, ExternalIdentity, LifecycleState, NextAction, NextActionStatus, NotificationLog,
+  Opportunity, ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
 } from "../domain/types.js";
 import { normalizeEmail, normalizeName } from "../domain/util.js";
 import type { SqlExecutor, SqlValue } from "./sql.js";
@@ -402,6 +402,26 @@ export class Repository {
 
   listAudit(limit = 200): AuditLog[] {
     return T.auditLogs.select(this.db, "ORDER BY created_at DESC LIMIT ?", limit);
+  }
+
+  // ---- notifications (plans/sales-os-notify.md §2.4, 設計書 §20.2) -----------------------------
+
+  insertNotificationLog(n: NotificationLog): void {
+    T.notificationLogs.insert(this.db, n);
+  }
+
+  /**
+   * The most recent SENT log matching this exact `messageHash`, if any. `messageHash` already
+   * encodes the send-date and `notificationType` (see `buildMorningBrief`'s caller), so an exact
+   * match is what "already sent today" means — this is what backs the dedup check before sending
+   * and the idempotency guard against a scheduler retry reusing the same `runId`.
+   */
+  findSentNotification(userId: string, messageHash: string): NotificationLog | undefined {
+    return T.notificationLogs.select(
+      this.db,
+      "WHERE user_id = ? AND message_hash = ? AND status = 'SENT' ORDER BY sent_at DESC LIMIT 1",
+      userId, messageHash,
+    )[0];
   }
 
   // ---- source applications (undo) --------------------------------------------------------------

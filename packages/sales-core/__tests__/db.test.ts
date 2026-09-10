@@ -185,3 +185,35 @@ describe("Repository settings", () => {
     expect(repo.getSetting("missing")).toBeUndefined();
   });
 });
+
+describe("Repository notification logs (plans/sales-os-notify.md N1)", () => {
+  let repo: Repository;
+  beforeEach(() => { repo = new Repository(freshDb()); });
+
+  it("findSentNotification is undefined until a matching SENT log exists", () => {
+    expect(repo.findSentNotification("u1", "morning_brief:2026-09-10")).toBeUndefined();
+    repo.insertNotificationLog({
+      id: newId(), userId: "u1", channel: "SLACK", notificationType: "morning_brief",
+      messageHash: "morning_brief:2026-09-10", sentAt: "2026-09-10T00:00:00Z", status: "SENT",
+    });
+    const found = repo.findSentNotification("u1", "morning_brief:2026-09-10");
+    expect(found?.status).toBe("SENT");
+  });
+
+  it("does not match a different user, or a FAILED/SKIPPED_DUPLICATE log", () => {
+    repo.insertNotificationLog({
+      id: newId(), userId: "u1", channel: "SLACK", notificationType: "morning_brief",
+      messageHash: "morning_brief:2026-09-10", sentAt: "2026-09-10T00:00:00Z", status: "FAILED",
+    });
+    expect(repo.findSentNotification("u1", "morning_brief:2026-09-10")).toBeUndefined();
+    expect(repo.findSentNotification("u2", "morning_brief:2026-09-10")).toBeUndefined();
+  });
+
+  it("a different day's messageHash is a separate entry (no false-positive dedup)", () => {
+    repo.insertNotificationLog({
+      id: newId(), userId: "u1", channel: "SLACK", notificationType: "morning_brief",
+      messageHash: "morning_brief:2026-09-10", sentAt: "2026-09-10T00:00:00Z", status: "SENT",
+    });
+    expect(repo.findSentNotification("u1", "morning_brief:2026-09-11")).toBeUndefined();
+  });
+});
