@@ -25,12 +25,14 @@ export default function TodayPage({
   api,
   user,
   ai,
+  transcription,
   onOpenOpportunity,
   onReviewsChanged,
 }: {
   api: RpcStub<SalesManagementApi>;
   user: UserDto;
   ai: WhoAmI["ai"];
+  transcription: WhoAmI["transcription"];
   onOpenOpportunity: (id: string) => void;
   onReviewsChanged: () => void;
 }) {
@@ -73,6 +75,10 @@ export default function TodayPage({
 
   // Read-only: unlike capture(), never mutates data, so no refresh() after it.
   const ask = (question: string) => runAction(() => api.askQuestion(question), "検索に失敗しました");
+
+  // Read-only: nothing is stored, so no refresh() after it either.
+  const transcribe = (audio: ArrayBuffer, mimeType: string) =>
+    runAction(() => api.transcribeAudio(audio, mimeType), "文字起こしに失敗しました");
 
   const retryCapture = async (sourceId: string) => {
     setRetrying((current) => ({ ...current, [sourceId]: true }));
@@ -118,8 +124,10 @@ export default function TodayPage({
         <CaptureBox
           timezone={timezone}
           ai={ai}
+          transcription={transcription}
           onCapture={capture}
           onAsk={ask}
+          onTranscribe={transcribe}
           onOpenOpportunity={onOpenOpportunity}
           onResolveReview={resolveReview}
           onDismissReview={dismissReview}

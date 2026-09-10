@@ -126,6 +126,7 @@ export default function App({ api, openPrompt }: Props) {
               api={api}
               user={user}
               ai={who.ai}
+              transcription={who.transcription}
               onOpenOpportunity={openOpportunity}
               onReviewsChanged={refreshReviewCount}
             />

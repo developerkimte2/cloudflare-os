@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 // Deep import via its own package.json "exports" subpath: this leaf module has no DB/LLM code,
 // unlike "@gadgets/sales-core" (the package index), which would drag db/node-sqlite's
 // `node:sqlite` into the browser bundle (FB_20260908 D).
@@ -17,6 +17,7 @@ const SOURCE_TYPE_OPTIONS: Array<{ value: SourceTypeOption; label: string }> = [
   { value: "EMAIL", label: "メール" },
   { value: "TRANSCRIPT", label: "議事録" },
   { value: "CHAT", label: "チャット" },
+  { value: "AUDIO", label: "音声" },
 ];
 
 /**
@@ -31,16 +32,22 @@ const SOURCE_TYPE_OPTIONS: Array<{ value: SourceTypeOption; label: string }> = [
 export function CaptureBox({
   timezone,
   ai,
+  transcription,
   onCapture,
   onAsk,
+  onTranscribe,
   onOpenOpportunity,
   onResolveReview,
   onDismissReview,
 }: {
   timezone: string;
   ai: WhoAmI["ai"];
+  /** 未設定 (Workers AI 未構成) なら「音声ファイル」ボタンを出さない (plans/sales-os-voice.md V3)。 */
+  transcription: WhoAmI["transcription"];
   onCapture: (text: string, options?: CaptureOptions) => Promise<CaptureResult | undefined>;
   onAsk: (question: string) => Promise<AnswerResult | undefined>;
+  /** 何も保存しない: 文字起こし結果をテキストエリアに入れるだけで、送信は既存の取り込みボタンに任せる。 */
+  onTranscribe: (audio: ArrayBuffer, mimeType: string) => Promise<{ text: string; modelName: string } | undefined>;
   onOpenOpportunity: (opportunityId: string) => void;
   onResolveReview: (id: string, optionId: string, input?: Record<string, unknown>) => void | Promise<void>;
   onDismissReview: (id: string) => void | Promise<void>;
@@ -50,6 +57,8 @@ export function CaptureBox({
   const [sourceType, setSourceType] = useState<SourceTypeOption | "">("");
   const [occurredAtLocal, setOccurredAtLocal] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const [result, setResult] = useState<CaptureResult>();
   const [answer, setAnswer] = useState<AnswerResult>();
   const [lastText, setLastText] = useState("");
@@ -112,6 +121,20 @@ export function CaptureBox({
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleAudioFile = async (file: File) => {
+    setTranscribing(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const transcribed = await onTranscribe(buffer, file.type || "application/octet-stream");
+      if (transcribed) {
+        setText((current) => (current.trim() ? `${current}\n${transcribed.text}` : transcribed.text));
+        setSourceType("AUDIO");
+      }
+    } finally {
+      setTranscribing(false);
     }
   };
 
@@ -196,6 +219,29 @@ export function CaptureBox({
             >
               質問として送る
             </button>
+          )}
+          {transcription.configured && (
+            <>
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/*"
+                hidden
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) void handleAudioFile(file);
+                }}
+              />
+              <button
+                type="button"
+                disabled={transcribing}
+                onClick={() => audioInputRef.current?.click()}
+                className="text-xs text-kumo-subtle hover:text-kumo-default hover:underline disabled:opacity-50"
+              >
+                {transcribing ? "文字起こし中…" : "🎙 音声ファイル"}
+              </button>
+            </>
           )}
         </div>
         <button
