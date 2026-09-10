@@ -20,6 +20,14 @@ declare namespace Cloudflare {
     SALES_SLACK_BOT_TOKEN?: string;
     /** Channel id or #name `chat.postMessage` sends to. Not a secret. */
     SALES_SLACK_CHANNEL?: string;
+    /**
+     * Workers AI account id used for voice transcription (`transcribe.ts`), independent of
+     * SALES_AI_PROVIDER (Whisper only runs on Workers AI, even when the judgment AI is Ollama).
+     * Falls back to SALES_AI_ACCOUNT_ID when SALES_AI_PROVIDER is already "workers-ai".
+     */
+    SALES_TRANSCRIBE_ACCOUNT_ID?: string;
+    /** Secret: Workers AI API token for transcription. Falls back to SALES_AI_API_KEY (see above). */
+    SALES_TRANSCRIBE_API_KEY?: string;
   }
 
   interface GlobalProps {
