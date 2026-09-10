@@ -35,16 +35,10 @@ export function AnswerView({
 
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3">
-      {result.modelName ? (
-        // The model that actually answered (may differ from the currently-configured one if it
-        // changed since) rather than the configured `ai` prop — same convention as
-        // OpportunityDetailPage's per-decision "判定AI:" line.
-        <span className="text-[11px] text-kumo-inactive">
-          判定AI: {result.modelProvider}/{result.modelName}
-        </span>
-      ) : (
-        <AiAttribution ai={ai} />
-      )}
+      <AiAttribution
+        ai={ai}
+        actual={result.modelName ? `${result.modelProvider}/${result.modelName}` : undefined}
+      />
       {!result.matchedByName && result.references.length > 0 && (
         <p className="text-xs text-kumo-subtle">
           名前に一致する案件が見つからなかったため、直近の案件をもとに回答しています。

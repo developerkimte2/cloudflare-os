@@ -39,15 +39,16 @@ export function CaptureResultView({
 
   if (result.notSalesRelated) {
     return (
-      <div className="mt-3 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3 text-sm text-kumo-subtle">
-        営業に関連する内容ではないと判断し、取り込みませんでした。
+      <div className="mt-3 space-y-2 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3 text-sm text-kumo-subtle">
+        <AiAttribution ai={ai} actual={result.decisions[0]?.modelName} />
+        <p>営業に関連する内容ではないと判断し、取り込みませんでした。</p>
       </div>
     );
   }
 
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3">
-      <AiAttribution ai={ai} />
+      <AiAttribution ai={ai} actual={result.decisions[0]?.modelName} />
       {result.duplicate && (
         <p className="text-xs text-kumo-subtle">同じ内容が既に取り込まれています。新規の変更はありません。</p>
       )}

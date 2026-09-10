@@ -48,8 +48,14 @@ describe("Phase 0 acceptance criteria", () => {
     expect(result.activity?.sourceId).toBe(result.source.id);
     expect(result.decisions.length).toBeGreaterThan(0);
     for (const d of result.decisions) expect(d.inputSourceIds).toContain(result.source.id);
+    // The gatekeeper-sales UI reads decisions[].modelName straight through as "provider/model"
+    // (AiAttribution) — pin the format so a provider.ts change can't silently break the display.
+    expect(result.decisions[0]!.modelName).toBe("fake/fake-model");
     const detail = svc.getOpportunity({ userId: user.id }, result.opportunity!.id);
     expect(detail.sources.map(s => s.id)).toContain(result.source.id);
+    // AIContextSnapshot.modelName is also already "provider/model" — same UI assumption.
+    expect(detail.context?.modelName).toBe("fake/fake-model");
+    expect(detail.context?.modelProvider).toBe("fake");
   });
 
   it("AC-005: a NextAction is generated", async () => {
