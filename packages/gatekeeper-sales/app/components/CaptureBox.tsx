@@ -59,6 +59,14 @@ export function CaptureBox({
   const [submitting, setSubmitting] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const [recording, setRecording] = useState(false);
+  // Basic existence check only (no permission prompt) — a real attempt happens on click, and its
+  // failure (sandbox block or user denial) is what actually hides this button (see startRecording).
+  const [micSupported, setMicSupported] = useState(
+    () => typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia,
+  );
+  const recorderRef = useRef<MediaRecorder | undefined>(undefined);
+  const recordTimeoutRef = useRef<number | undefined>(undefined);
   const [result, setResult] = useState<CaptureResult>();
   const [answer, setAnswer] = useState<AnswerResult>();
   const [lastText, setLastText] = useState("");
@@ -124,17 +132,49 @@ export function CaptureBox({
     }
   };
 
-  const handleAudioFile = async (file: File) => {
+  // Shared by both voice entry points (a-1 録音 / a-2 ファイル): a File is already a Blob, so the
+  // uploaded file and the MediaRecorder output go through the same transcription call.
+  const handleAudioBlob = async (blob: Blob) => {
     setTranscribing(true);
     try {
-      const buffer = await file.arrayBuffer();
-      const transcribed = await onTranscribe(buffer, file.type || "application/octet-stream");
+      const buffer = await blob.arrayBuffer();
+      const transcribed = await onTranscribe(buffer, blob.type || "application/octet-stream");
       if (transcribed) {
         setText((current) => (current.trim() ? `${current}\n${transcribed.text}` : transcribed.text));
         setSourceType("AUDIO");
       }
     } finally {
       setTranscribing(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recordTimeoutRef.current !== undefined) window.clearTimeout(recordTimeoutRef.current);
+    recorderRef.current?.stop();
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setRecording(false);
+        void handleAudioBlob(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      // 設計書 §19.1「30秒程度で話せること」を踏まえ、余裕をみて60秒で自動停止する。
+      recordTimeoutRef.current = window.setTimeout(stopRecording, 60_000);
+    } catch {
+      // Workshop の iframe に allow="microphone" が無い、またはユーザーが拒否した場合。ここで
+      // マイク機能を隠し、以降は音声ファイルのアップロードだけを案内する (plans/sales-os-voice.md V4)。
+      setMicSupported(false);
     }
   };
 
@@ -230,17 +270,27 @@ export function CaptureBox({
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
                   event.currentTarget.value = "";
-                  if (file) void handleAudioFile(file);
+                  if (file) void handleAudioBlob(file);
                 }}
               />
               <button
                 type="button"
-                disabled={transcribing}
+                disabled={transcribing || recording}
                 onClick={() => audioInputRef.current?.click()}
                 className="text-xs text-kumo-subtle hover:text-kumo-default hover:underline disabled:opacity-50"
               >
                 {transcribing ? "文字起こし中…" : "🎙 音声ファイル"}
               </button>
+              {micSupported && (
+                <button
+                  type="button"
+                  disabled={transcribing}
+                  onClick={() => (recording ? stopRecording() : void startRecording())}
+                  className="text-xs text-kumo-subtle hover:text-kumo-default hover:underline disabled:opacity-50"
+                >
+                  {recording ? "⏹ 停止" : "🎤 話す"}
+                </button>
+              )}
             </>
           )}
         </div>
