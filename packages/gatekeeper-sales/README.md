@@ -106,9 +106,18 @@ but needs the Workshop host to add `allow="microphone"` to the gadget iframe; un
 button hides itself after the first failed permission attempt and the file-upload button keeps working.
 Original audio is never stored (no R2 bucket) — only the transcript.
 
+## Notifications
+
+`plans/sales-os-notify.md`: Settings → Slack 連携 has a "Morning Brief を今すぐ送信" button (admin only)
+that combines every active user's overdue/due-today/attention items (`@gadgets/sales-core`'s
+`buildMorningBrief`) into one Slack message, deduped per calendar day via `NotificationLog`
+(設計書 §20.2 — a second click the same day is a no-op). There is **no automatic daily send yet**: the
+"朝のダイジェスト時刻" setting is saved but nothing schedules against it. Wiring an actual daily trigger
+needs `gatekeeper-scheduler`'s ambient `SCHEDULER` binding, registered from agent-authored code (an
+agent, not this Worker, holds that binding) — see the doc's item N3 note for what's unverified there.
+
 ## Not in Phase 0
 
-Calendar / Gmail integrations, Manager digests, R2 raw storage. See `plans/sales-os-phase0.md` §4,
-`plans/sales-os-calendar.md`, `plans/sales-os-notify.md`, and the design document's phase plan. Slack
-has only the sending foundation (`src/slack.ts`, `chat.postMessage`, an admin "テスト送信" button) — no
-automatic triggers, scheduling, or Notification Fatigue dedup yet (設計書 §20 の通知エンジンは Phase 1)。
+Calendar / Gmail integrations, automatic notification scheduling, R2 raw storage. See
+`plans/sales-os-phase0.md` §4, `plans/sales-os-calendar.md`, `plans/sales-os-notify.md`, and the design
+document's phase plan.

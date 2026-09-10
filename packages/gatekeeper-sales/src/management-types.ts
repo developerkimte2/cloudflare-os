@@ -79,4 +79,10 @@ export interface SalesManagementApi {
 
   /** ADMIN only. Sends a fixed test message to the configured Slack channel; throws if unconfigured. */
   sendSlackTest(): Promise<void>;
+  /**
+   * ADMIN only, manual trigger (plans/sales-os-notify.md N3). Sends today's Morning Brief (all
+   * active users, one combined Slack message) right now; a no-op (`sent: false`) if one was already
+   * sent today (設計書 §20.2 dedup).
+   */
+  sendMorningBrief(): Promise<{ sent: boolean; recipientCount: number }>;
 }

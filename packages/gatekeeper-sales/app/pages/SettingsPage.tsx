@@ -40,6 +40,7 @@ export default function SettingsPage({
   const [phaseLabelsText, setPhaseLabelsText] = useState("");
   const [saving, setSaving] = useState(false);
   const [sendingSlackTest, setSendingSlackTest] = useState(false);
+  const [sendingMorningBrief, setSendingMorningBrief] = useState(false);
 
   const sendSlackTest = async () => {
     setSendingSlackTest(true);
@@ -50,6 +51,22 @@ export default function SettingsPage({
       toasts.add({ title: "Slack へのテスト送信に失敗しました", description: errorMessage(caught), variant: "error" });
     } finally {
       setSendingSlackTest(false);
+    }
+  };
+
+  const sendMorningBrief = async () => {
+    setSendingMorningBrief(true);
+    try {
+      const result = await api.sendMorningBrief();
+      toasts.add(
+        result.sent
+          ? { title: "Morning Brief を送信しました", description: `対象 ${result.recipientCount} 名分。`, variant: "success" }
+          : { title: "本日分は送信済みでした", description: "同じ日に二重送信しないための仕様です。", variant: "info" },
+      );
+    } catch (caught) {
+      toasts.add({ title: "Morning Brief の送信に失敗しました", description: errorMessage(caught), variant: "error" });
+    } finally {
+      setSendingMorningBrief(false);
     }
   };
 
@@ -133,16 +150,27 @@ export default function SettingsPage({
           </p>
         )}
         <p className="mt-2 text-xs text-kumo-inactive">
-          現時点では通知の自動送信はなく、この土台の疎通確認のみです（設計書 §20 の通知エンジンは今後の対応）。
+          Morning Brief（下記）は手動送信のみ実装済みです。毎朝自動で送る仕組み（スケジューラ連携）はまだ無く
+          （plans/sales-os-notify.md）、下のボタンを押した時だけ送信されます。
         </p>
-        <button
-          type="button"
-          disabled={sendingSlackTest}
-          onClick={() => void sendSlackTest()}
-          className="press mt-2.5 rounded-lg border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint disabled:opacity-50"
-        >
-          {sendingSlackTest ? "送信中…" : "テスト送信"}
-        </button>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={sendingSlackTest}
+            onClick={() => void sendSlackTest()}
+            className="press rounded-lg border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint disabled:opacity-50"
+          >
+            {sendingSlackTest ? "送信中…" : "テスト送信"}
+          </button>
+          <button
+            type="button"
+            disabled={sendingMorningBrief}
+            onClick={() => void sendMorningBrief()}
+            className="press rounded-lg border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint disabled:opacity-50"
+          >
+            {sendingMorningBrief ? "送信中…" : "Morning Brief を今すぐ送信"}
+          </button>
+        </div>
       </section>
 
       <Section title="確信度のしきい値">
@@ -189,6 +217,9 @@ export default function SettingsPage({
               }
               className="h-8 rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
             />
+            <p className="mt-1 text-[11px] text-kumo-inactive">
+              保存されますが、まだこの時刻に自動送信する仕組みには接続されていません。上の「Morning Brief を今すぐ送信」を使ってください。
+            </p>
           </Field>
           <Field label="既定通貨">
             <input

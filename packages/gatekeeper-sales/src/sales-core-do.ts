@@ -10,7 +10,8 @@ import { DurableObject } from "cloudflare:workers";
 import { validateRpc } from "capnweb-validate";
 import { createLogger } from "@gadgets/backend-utils/logger";
 import {
-  DurableObjectSqlExecutor, Repository, SalesService, loadConfig, migrate, systemClock,
+  DurableObjectSqlExecutor, Repository, SalesService, buildMorningBrief, loadConfig, localDate,
+  migrate, morningBriefMessageHash, newId, nowIso, systemClock, MORNING_BRIEF_NOTIFICATION_TYPE,
   type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog, type CaptureOptions,
   type CaptureResult, type Commitment, type ConfigDto, type CoreContext, type ManagerSummary,
   type NextAction, type NextActionFilter, type NextActionInput, type NextActionPatch,
@@ -95,6 +96,51 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
   async sendSlackTest(caller: Caller): Promise<void> {
     if (!caller.isAdmin) throw new Error("Slack のテスト送信は管理者のみ実行できます");
     await postToSlack(this.env, "Sales OS からのテスト通知です。この文言が届けば連携は正常です。");
+  }
+
+  /**
+   * ADMIN only, manual trigger (plans/sales-os-notify.md N3). Combines every active user's Morning
+   * Brief into one Slack message (there is no per-user Slack routing yet — see the doc §2.3) and
+   * dedups by day via NotificationLog (設計書 §20.2): a second call the same day is a no-op.
+   *
+   * The *scheduled* daily trigger (gatekeeper-scheduler) is intentionally not wired up here yet -
+   * that requires an agent-registered callback whose exact restore/env-binding mechanics could not
+   * be verified from this package alone (see plans/sales-os-notify.md §3 note on item N3). This
+   * method is what that callback would call once the wiring is confirmed.
+   */
+  async sendMorningBrief(caller: Caller): Promise<{ sent: boolean; recipientCount: number }> {
+    if (!caller.isAdmin) throw new Error("Morning Brief の送信は管理者のみ実行できます");
+    const users = this.#service.repo.listUsers().filter(u => u.active);
+    if (users.length === 0) return { sent: false, recipientCount: 0 };
+
+    const date = localDate(nowIso(this.#service.ctx.clock), this.#service.config.defaultTimezone);
+    const hash = morningBriefMessageHash(date);
+    if (users.some(u => this.#service.repo.findSentNotification(u.id, hash))) {
+      return { sent: false, recipientCount: users.length };
+    }
+
+    const text = users
+      .map(u => buildMorningBrief(this.#service.getToday({ userId: u.id })))
+      .join("\n\n---\n\n");
+
+    const logStatus = (status: "SENT" | "FAILED") => {
+      const sentAt = nowIso(this.#service.ctx.clock);
+      for (const u of users) {
+        this.#service.repo.insertNotificationLog({
+          id: newId(), userId: u.id, channel: "SLACK", notificationType: MORNING_BRIEF_NOTIFICATION_TYPE,
+          messageHash: hash, sentAt, status,
+        });
+      }
+    };
+
+    try {
+      await postToSlack(this.env, text);
+    } catch (caught) {
+      logStatus("FAILED");
+      throw caught;
+    }
+    logStatus("SENT");
+    return { sent: true, recipientCount: users.length };
   }
 
   /** See `SalesManagementApi.transcribeAudio`. Read-only: does not touch the DO's storage. */

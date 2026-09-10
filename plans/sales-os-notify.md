@@ -53,31 +53,56 @@ B (Pre-Meeting Brief) / C (Post-Meeting Capture) は `plans/sales-os-calendar.md
 - 空データ (期限超過0件・注意案件0件) のときの文面も決める (「今日は特に注意事項はありません」等)。
 - テスト: fixture 的な `TodayView` を渡して出力を固定するテスト (`app/format.test.ts` と同じ考え方)。
 
-### 項目 N3: `SalesCoreDurableObject` に `[restore]` + `MorningBriefTask` を実装
+### 項目 N3: 送信ロジックの実装 — ただし `[restore]`/`onSchedule` の自動配線は保留 (実装時に判明)
 
-- `packages/gatekeeper-sales/src/sales-core-do.ts`: `[restore](params)` で `{type:"morningBrief"}` を受け、`MorningBriefTask` (`RpcTarget`) を返す。`onSchedule(firing)`:
-  1. 全アクティブユーザー分の `getToday()` 相当を集約 (SYSTEM actor、承認キュー無し — Slack へ送るだけで DB に書き込まない読み取り専用処理)。
-  2. `buildMorningBrief()` で担当者ごとのセクションを組み立てて1通にまとめる。
-  3. N1 の重複チェック → `postToSlack()` → ログ記録。
-- テスト: DO レベルのテスト (`__tests__/worker.ts` 系) で `onSchedule` を直接呼び、Slack 送信のモックとログ記録を確認。
+**実装時に判明した修正**: `packages/gatekeeper-scheduler/src/types.d.ts` の docstring は
+`import { restore } from "cloudflare:workers"` を示すが、このリポジトリにインストール済みの
+`@cloudflare/workers-types` (`5.20260903.1`) にはそのような named export が無い。実際にあるのは
+`ExecutionContext`/`DurableObjectState` の**メソッド** `restore(params): Promise<any>`。つまり
+`ctx.restore()` は「呼び出し元自身の DO/ExecutionContext」を再構築対象にする仕組みで、`SCHEDULER`
+アンビントバインディングもエージェントの実行コンテキスト (executeCode の `env`) にしか存在しない —
+`gatekeeper-sales` の Worker には `env.SCHEDULER` は無い (wrangler.jsonc に束縛していない)。
+したがって「毎朝自動で送る」ための実際の登録は、**店主がエージェントに依頼して作らせる、Sales OS とは別の
+小さな Gadget** が `ctx.restore()` + `SCHEDULER.calendarAt()` を持ち、`onSchedule()` から Sales OS の
+どれかのエンドポイントを叩く、という形にならざるを得ない。この Gadget 側の実装と、`onSchedule` から
+Sales OS 側を呼ぶ具体的な経路 (`env.SALES` アンビントバインディング経由が有力だが未検証) は
+**このパッケージの中だけでは実装・検証できない** — `packages/workshop-backend` 側のアンビントバインディング
+配線を確認できる人・環境が必要。
 
-### 項目 N4: Settings 画面の説明更新
+**そのため本項目は縮小して実装した**: 自動配線は行わず、`SalesCoreDurableObject.sendMorningBrief(caller)`
+(ADMIN 限定) を追加。全アクティブユーザー分の `getToday()` を集約し `buildMorningBrief()` で1通に結合、
+N1 の重複チェック (`findSentNotification`、当日ぶんの `messageHash`) → `postToSlack()` → ログ記録、まで
+を実装。`SettingsPage.tsx` の Slack 連携セクションに「Morning Brief を今すぐ送信」ボタンとして配線した
+(手動トリガー)。将来 N3b として、上記の Gadget 側の仕組みが検証でき次第、その `onSchedule` から呼ぶ
+入り口 (`env.SALES.sendMorningBrief()` 相当をエージェント向け `types.d.ts` の `SalesSession` に追加する
+形になる見込み) を追加すれば、コード変更なしで自動化に切り替えられる設計にしてある。
+- テスト: `packages/gatekeeper-sales/__tests__/core-do.test.ts` に `sendMorningBrief` の DO レベルテストを追加 (ADMIN 以外は拒否、当日2回目はスキップ、アクティブユーザー0件は no-op)。Slack 送信は既存の `fetchSpy` を拡張して記録・検証。
 
-- `SettingsPage.tsx` の「朝のダイジェスト時刻」欄に、§2.1 の運用上の注意 (時刻変更は Connections での再登録が要る) を短い説明文として追加。
-- README に「Morning Brief の有効化手順」(エージェントに依頼 → Connections で有効化) を追記。
+### 項目 N4: Settings 画面の説明更新 (N3 と合わせて実施済み)
 
-### 項目 N5: 実機セットアップ手順の実行 (コード変更なし)
+- `SettingsPage.tsx` の Slack 連携セクションに「まだ自動送信は無く、ボタンを押した時だけ送る」旨、「朝のダイジェスト時刻」欄に「保存されるが自動送信には未接続」の旨を追加。N3 のボタン実装と同じコミットで行った。
+- README に「Notifications」節を追加し、手動トリガーの実体と、自動化がまだ無い理由 (§3 N3 の判明事項) を明記。
 
-- 店主 (または管理者) が実際に Workshop でエージェントに登録を依頼し、Connections で有効化する。翌朝の送信を確認して本書に結果を追記する。
+### 項目 N5: 実機セットアップ手順の実行 — 保留 (N3 縮小につき)
+
+自動配線が無いため「Connections で有効化する」手順自体が発生しない。実機確認は「Settings → Slack 連携 →
+Morning Brief を今すぐ送信 → Slack に1通届く → もう一度押すと2通目は届かない」に縮小する。店主に実機確認を
+依頼する。
 
 ## 4. 受け入れ基準
 
 - sales-core / gatekeeper-sales の既存テストスイートが緑のまま (`sales-os-20260910.md` §0 の検証コマンド)。
-- 実機: N5 の手順どおり登録・有効化したあと、翌朝 `morningDigestTime` (既定 08:50) 頃に Slack チャンネルへ1通届く。同じ日にもう一度スケジュールが (リトライ等で) 発火しても2通目は届かない。
+- 実機: Settings → Slack 連携 →「Morning Brief を今すぐ送信」を押すと Slack チャンネルへ1通届く。同じ日にもう一度押しても2通目は届かない (トーストで「本日分は送信済みでした」と表示される)。
 - 実機: 期限超過・注意案件が無い日でも空文面ではなく「特になし」の一文が入る。
+- 自動送信 (毎朝) は本書の範囲では未達成 — §3 N3 の判明事項のとおり、別の Gadget 側の実装検証が必要 (残課題 N3b)。
 
 ## 5. 残課題 (本書の対象外)
 
+- **N3b (最優先の持ち越し)**: 毎朝の自動送信。`env.SALES.sendMorningBrief()` 相当をエージェント向け
+  `SalesSession` (`types.d.ts`) に追加し、店主がエージェントに依頼して作らせる別 Gadget が
+  `gatekeeper-scheduler` の `ctx.restore()` + `SCHEDULER.calendarAt()` でスケジュールを登録、その
+  `onSchedule()` から呼ぶ形を検証する。`packages/workshop-backend` のアンビントバインディング配線に
+  詳しい人・実際の Workshop 環境での実験が必要。
 - Pre-Meeting Brief (B) / Post-Meeting Capture (C) — `plans/sales-os-calendar.md` 完了後に着手。
 - Due Reminder (D) / Escalation (E、§20.3 のデフォルト例) / Manager Digest (F)。
 - 担当者ごとの Slack DM 配信 (`User.slackUserId` の追加、`im:write` スコープ)。

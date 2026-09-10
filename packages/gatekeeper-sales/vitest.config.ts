@@ -18,6 +18,8 @@ export default defineConfig({
           SALES_AI_PROVIDER: "ollama",
           SALES_AI_MODEL: "test-model",
           SALES_AI_BASE_URL: "http://llm.test/v1",
+          SALES_SLACK_BOT_TOKEN: "xoxb-test",
+          SALES_SLACK_CHANNEL: "#sales-test",
         },
       },
     }),
@@ -33,6 +35,7 @@ export default defineConfig({
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("Sales OS にまだ登録されていません")) return false;
       if (message.includes("処理済みの取込は破棄できません")) return false;
+      if (message.includes("Morning Brief の送信は管理者のみ実行できます")) return false;
     },
   },
 });
