@@ -50,10 +50,13 @@ Vars (in `wrangler.jsonc`, override per deployment):
 | `SALES_AI_BASE_URL` | Optional. Anthropic root or AI Gateway URL; OpenAI-compatible root for the others. |
 | `SALES_AI_ACCOUNT_ID` | Workers AI: Cloudflare account id (builds the `/ai/v1` base URL). |
 | `SALES_SLACK_CHANNEL` | Optional. Channel id or `#name` for the Slack "テスト送信" button (設計書 §20). No default. |
+| `SALES_TRANSCRIBE_ACCOUNT_ID` | Optional. Workers AI account id for voice transcription (`plans/sales-os-voice.md`). Falls back to `SALES_AI_ACCOUNT_ID` when `SALES_AI_PROVIDER=workers-ai`. |
 
 Secrets: `SALES_AI_API_KEY` (`wrangler secret put SALES_AI_API_KEY`; not needed for Ollama);
 `SALES_SLACK_BOT_TOKEN` (a Slack bot token with the `chat:write` scope — optional, only needed to use
-the Slack test-send button under Sales OS → 設定).
+the Slack test-send button under Sales OS → 設定); `SALES_TRANSCRIBE_API_KEY` (optional — voice capture
+falls back to `SALES_AI_API_KEY` when `SALES_AI_PROVIDER=workers-ai`, but is required on its own when the
+judgment AI is Ollama/Anthropic/etc., since Whisper only runs on Workers AI).
 
 Local dev: create `packages/gatekeeper-sales/.dev.vars` (gitignored):
 
@@ -93,9 +96,19 @@ gatekeeper-scheduler.
 `src/types.txt` must be byte-identical to `src/types.d.ts` (a symlink upstream; a real file on Windows
 checkouts) — `__tests__/types-copy.test.ts` enforces it.
 
+## Voice capture
+
+`plans/sales-os-voice.md`: CaptureBox can transcribe an uploaded audio file (Workers AI Whisper via
+`src/transcribe.ts`) into the capture textarea for the user to review before submitting — no host
+changes needed, works today when `SALES_TRANSCRIBE_ACCOUNT_ID`/`SALES_TRANSCRIBE_API_KEY` (or a
+`workers-ai`-configured judgment AI) are set. Browser-mic recording shares the same transcription call
+but needs the Workshop host to add `allow="microphone"` to the gadget iframe; until then the "🎤 話す"
+button hides itself after the first failed permission attempt and the file-upload button keeps working.
+Original audio is never stored (no R2 bucket) — only the transcript.
+
 ## Not in Phase 0
 
-Calendar / Gmail integrations, voice, Manager digests, R2 raw storage. See `plans/sales-os-phase0.md`
-§4 and the design document's phase plan. Slack has only the sending foundation (`src/slack.ts`,
-`chat.postMessage`, an admin "テスト送信" button) — no automatic triggers, scheduling, or Notification
-Fatigue dedup yet (設計書 §20 の通知エンジンは Phase 1)。
+Calendar / Gmail integrations, Manager digests, R2 raw storage. See `plans/sales-os-phase0.md` §4,
+`plans/sales-os-calendar.md`, `plans/sales-os-notify.md`, and the design document's phase plan. Slack
+has only the sending foundation (`src/slack.ts`, `chat.postMessage`, an admin "テスト送信" button) — no
+automatic triggers, scheduling, or Notification Fatigue dedup yet (設計書 §20 の通知エンジンは Phase 1)。
