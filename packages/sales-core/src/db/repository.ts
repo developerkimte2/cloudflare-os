@@ -3,9 +3,9 @@
  * here — those live in `rules/` and `pipeline/`.
  */
 import type {
-  AIContextSnapshot, AIDecision, Activity, AuditLog, Commitment, CustomerAccount,
-  CustomerPerson, ExternalIdentity, LifecycleState, NextAction, NextActionStatus, NotificationLog,
-  Opportunity, ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
+  AIContextSnapshot, AIDecision, Activity, AuditLog, CalendarEventMirror, Commitment,
+  CustomerAccount, CustomerPerson, ExternalIdentity, LifecycleState, NextAction, NextActionStatus,
+  NotificationLog, Opportunity, ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
 } from "../domain/types.js";
 import { normalizeEmail, normalizeName } from "../domain/util.js";
 import type { SqlExecutor, SqlValue } from "./sql.js";
@@ -422,6 +422,36 @@ export class Repository {
       "WHERE user_id = ? AND message_hash = ? AND status = 'SENT' ORDER BY sent_at DESC LIMIT 1",
       userId, messageHash,
     )[0];
+  }
+
+  // ---- calendar (plans/sales-os-calendar.md §2.5, 設計書 §17) ------------------------------------
+
+  findCalendarEvent(googleCalendarId: string, googleEventId: string): CalendarEventMirror | undefined {
+    return T.calendarEventMirrors.select(
+      this.db, "WHERE google_calendar_id = ? AND google_event_id = ?", googleCalendarId, googleEventId,
+    )[0];
+  }
+
+  /**
+   * Insert-or-replace keyed on (googleCalendarId, googleEventId), not `id` — Google's Calendar sync
+   * (initial or incremental, §17.2-17.3) reports the same event id on every update, so this is what
+   * "upsert the mirror row" means here; `e.id` is only used for a brand-new row.
+   */
+  upsertCalendarEvent(e: CalendarEventMirror): void {
+    const existing = this.findCalendarEvent(e.googleCalendarId, e.googleEventId);
+    if (existing) {
+      T.calendarEventMirrors.update(this.db, { ...e, id: existing.id });
+    } else {
+      T.calendarEventMirrors.insert(this.db, e);
+    }
+  }
+
+  /** Events for one owner whose start falls in `[fromIso, toIso)`, earliest first. */
+  listCalendarEventsForOwner(ownerUserId: string, fromIso: string, toIso: string): CalendarEventMirror[] {
+    return T.calendarEventMirrors.select(
+      this.db, "WHERE owner_user_id = ? AND start_at >= ? AND start_at < ? ORDER BY start_at",
+      ownerUserId, fromIso, toIso,
+    );
   }
 
   // ---- source applications (undo) --------------------------------------------------------------

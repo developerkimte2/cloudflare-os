@@ -217,3 +217,42 @@ describe("Repository notification logs (plans/sales-os-notify.md N1)", () => {
     expect(repo.findSentNotification("u1", "morning_brief:2026-09-11")).toBeUndefined();
   });
 });
+
+describe("Repository calendar events (plans/sales-os-calendar.md C1)", () => {
+  let repo: Repository;
+  beforeEach(() => { repo = new Repository(freshDb()); });
+
+  function makeEvent(overrides: Partial<import("../src/domain/types.js").CalendarEventMirror> = {}) {
+    return {
+      id: newId(), googleCalendarId: "cal-1", googleEventId: "evt-1", ownerUserId: "user-1",
+      title: "ABC株式会社 定例", attendeesJson: [], startAt: "2026-09-10T01:00:00Z",
+      endAt: "2026-09-10T02:00:00Z", status: "confirmed", lastSyncedAt: "2026-09-10T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("findCalendarEvent is undefined until inserted, then round-trips", () => {
+    expect(repo.findCalendarEvent("cal-1", "evt-1")).toBeUndefined();
+    repo.upsertCalendarEvent(makeEvent());
+    const found = repo.findCalendarEvent("cal-1", "evt-1");
+    expect(found?.title).toBe("ABC株式会社 定例");
+  });
+
+  it("upsertCalendarEvent replaces the existing row instead of inserting a duplicate", () => {
+    repo.upsertCalendarEvent(makeEvent({ status: "confirmed" }));
+    repo.upsertCalendarEvent(makeEvent({ id: newId(), status: "cancelled" }));
+
+    const found = repo.findCalendarEvent("cal-1", "evt-1");
+    expect(found?.status).toBe("cancelled");
+    expect(repo.listCalendarEventsForOwner("user-1", "2026-09-01T00:00:00Z", "2026-09-30T00:00:00Z")).toHaveLength(1);
+  });
+
+  it("listCalendarEventsForOwner filters by owner and the start-time range", () => {
+    repo.upsertCalendarEvent(makeEvent({ googleEventId: "evt-1", startAt: "2026-09-10T01:00:00Z" }));
+    repo.upsertCalendarEvent(makeEvent({ googleEventId: "evt-2", startAt: "2026-09-15T01:00:00Z" }));
+    repo.upsertCalendarEvent(makeEvent({ googleEventId: "evt-3", ownerUserId: "user-2", startAt: "2026-09-10T01:00:00Z" }));
+
+    const inRange = repo.listCalendarEventsForOwner("user-1", "2026-09-01T00:00:00Z", "2026-09-12T00:00:00Z");
+    expect(inRange.map(e => e.googleEventId)).toEqual(["evt-1"]);
+  });
+});
