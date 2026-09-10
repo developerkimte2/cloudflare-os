@@ -32,6 +32,8 @@ export interface WhoAmI {
   ai: { provider: string; model: string; configured: boolean };
   /** Whether Slack (`chat.postMessage`) is configured, and which channel — never the token. */
   slack: { configured: boolean; channel?: string };
+  /** Whether voice-capture transcription (Workers AI Whisper) is configured. */
+  transcription: { configured: boolean };
 }
 
 export interface SalesManagementApi {
@@ -43,6 +45,12 @@ export interface SalesManagementApi {
   capture(text: string, options?: CaptureOptions): Promise<CaptureResult>;
   /** Answers a question about existing opportunities instead of capturing the text (does not store anything). */
   askQuestion(question: string): Promise<AnswerResult>;
+  /**
+   * Transcribes a recorded/uploaded audio clip (plans/sales-os-voice.md). Read-only: nothing is
+   * stored. The caller (CaptureBox) puts the returned text in the textarea for the user to review
+   * before calling `capture()`.
+   */
+  transcribeAudio(audio: ArrayBuffer, mimeType: string): Promise<{ text: string; modelName: string }>;
   getCapture(sourceId: string): Promise<CaptureResult>;
   listCaptures(limit?: number): Promise<SourceDocument[]>;
   retryCapture(sourceId: string): Promise<CaptureResult>;

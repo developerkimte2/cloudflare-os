@@ -467,6 +467,9 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   getToday(): Promise<TodayView> { return this.core.getToday(this.caller); }
   capture(text: string, options?: CaptureOptions): Promise<CaptureResult> { return this.core.capture(this.caller, text, options); }
   askQuestion(question: string): Promise<AnswerResult> { return this.core.askQuestion(this.caller, question); }
+  transcribeAudio(audio: ArrayBuffer, mimeType: string): Promise<{ text: string; modelName: string }> {
+    return this.core.transcribeAudio(this.caller, audio, mimeType);
+  }
   getCapture(sourceId: string): Promise<CaptureResult> { return this.core.getCapture(this.caller, sourceId); }
   listCaptures(limit?: number): Promise<SourceDocument[]> { return this.core.listCaptures(this.caller, limit); }
   retryCapture(sourceId: string): Promise<CaptureResult> { return this.core.retryCapture(this.caller, sourceId); }

@@ -21,6 +21,7 @@ import {
 import { buildLlm, describeAi } from "./llm.js";
 import type { WhoAmI } from "./management-types.js";
 import { describeSlack, postToSlack } from "./slack.js";
+import { describeTranscription, transcribeAudio as runTranscription } from "./transcribe.js";
 
 export const IDENTITY_PROVIDER = "cfos";
 export const VENDOR_ID = "sales";
@@ -86,6 +87,7 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
       firstUser: this.#service.repo.listUsers().length === 0,
       ai: describeAi(this.env),
       slack: describeSlack(this.env),
+      transcription: describeTranscription(this.env),
     };
   }
 
@@ -93,6 +95,11 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
   async sendSlackTest(caller: Caller): Promise<void> {
     if (!caller.isAdmin) throw new Error("Slack のテスト送信は管理者のみ実行できます");
     await postToSlack(this.env, "Sales OS からのテスト通知です。この文言が届けば連携は正常です。");
+  }
+
+  /** See `SalesManagementApi.transcribeAudio`. Read-only: does not touch the DO's storage. */
+  async transcribeAudio(_caller: Caller, audio: ArrayBuffer, mimeType: string): Promise<{ text: string; modelName: string }> {
+    return runTranscription(this.env, audio, mimeType);
   }
 
   async register(caller: Caller, input: RegisterIdentityInput): Promise<UserDto> {
