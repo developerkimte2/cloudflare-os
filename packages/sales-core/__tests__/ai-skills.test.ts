@@ -218,6 +218,21 @@ describe("buildAnswerRequest", () => {
     expect(req.system).toContain("その旨を一文で正直に伝えてから");
   });
 
+  it("translates lifecycle/operational/risk state to Japanese, never raw English enum constants", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
+    });
+    expect(req.user).toContain("状態: 進行中/動いている");
+    expect(req.user).toContain("リスク: 中 - 返信が遅い");
+    // FB_20260908: no raw English enums in front of users - the model must not be able to just
+    // echo internal constants like "OPEN", "ACTIVE" or "MEDIUM" back at a Japanese sales rep.
+    const sourceBlock = req.user.slice(req.user.indexOf("=== SOURCE ==="));
+    expect(sourceBlock).not.toMatch(/\b(OPEN|WON|LOST|ON_HOLD|CLOSED)\b/);
+    expect(sourceBlock).not.toMatch(/\b(ACTIVE|WAITING_CUSTOMER|WAITING_INTERNAL|FOLLOWUP_REQUIRED|SCHEDULED|BLOCKED|CONTRACTING)\b/);
+    expect(sourceBlock).not.toMatch(/\b(NONE|LOW|MEDIUM|HIGH)\b/);
+  });
+
   it("shows '(なし)' when there are no opportunities to answer from", () => {
     const req = buildAnswerRequest({
       referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
