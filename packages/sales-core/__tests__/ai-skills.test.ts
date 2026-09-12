@@ -218,12 +218,15 @@ describe("buildAnswerRequest", () => {
     expect(req.system).toContain("その旨を一文で正直に伝えてから");
   });
 
-  it("translates lifecycle/operational/risk state to Japanese, never raw English enum constants", () => {
+  it("describes state as one natural status phrase, never the raw lifecycle/operational pair", () => {
     const req = buildAnswerRequest({
       referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
       question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
     });
-    expect(req.user).toContain("状態: 進行中/動いている");
+    // OPEN + ACTIVE as a literal "進行中/動いている" pair just moves the FB_20260908 "raw enum"
+    // problem into Japanese - a sales rep asking "how's this going" wants one plain phrase.
+    expect(req.user).toContain("状態: 順調に進行中");
+    expect(req.user).not.toContain("進行中/動いている");
     expect(req.user).toContain("リスク: 中 - 返信が遅い");
     // FB_20260908: no raw English enums in front of users - the model must not be able to just
     // echo internal constants like "OPEN", "ACTIVE" or "MEDIUM" back at a Japanese sales rep.
@@ -231,6 +234,15 @@ describe("buildAnswerRequest", () => {
     expect(sourceBlock).not.toMatch(/\b(OPEN|WON|LOST|ON_HOLD|CLOSED)\b/);
     expect(sourceBlock).not.toMatch(/\b(ACTIVE|WAITING_CUSTOMER|WAITING_INTERNAL|FOLLOWUP_REQUIRED|SCHEDULED|BLOCKED|CONTRACTING)\b/);
     expect(sourceBlock).not.toMatch(/\b(NONE|LOW|MEDIUM|HIGH)\b/);
+  });
+
+  it("describes closed opportunities by their outcome, not the operational state underneath", () => {
+    const won = { ...opportunity, lifecycleState: "WON" as const };
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [won], matchedByName: true,
+    });
+    expect(req.user).toContain("状態: 受注");
   });
 
   it("shows '(なし)' when there are no opportunities to answer from", () => {
