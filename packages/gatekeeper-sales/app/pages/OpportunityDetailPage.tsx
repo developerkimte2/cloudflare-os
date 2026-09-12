@@ -1,4 +1,5 @@
 import type { RpcStub } from "capnweb";
+import { useKumoToastManager } from "@cloudflare/kumo";
 import { CaretLeft } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import type {
@@ -27,6 +28,7 @@ import { ConfirmInline } from "../components/ConfirmInline";
 import { NextActionRow } from "../components/NextActionRow";
 import { ReviewCard } from "../components/ReviewCard";
 import { formatDate, formatDateTime, isoToLocalInput, localInputToIso } from "../format";
+import { buildOpportunityReport } from "../report";
 import {
   ACTIVITY_TYPE_LABEL,
   ACTOR_TYPE_LABEL,
@@ -134,7 +136,7 @@ export default function OpportunityDetailPage({
         <CaretLeft size={14} /> 案件一覧へ
       </button>
 
-      <OpportunityHeader opportunity={data} users={users ?? []} onSave={savePatch} />
+      <OpportunityHeader opportunity={data} users={users ?? []} timezone={timezone} onSave={savePatch} />
 
       <ContextSection context={data.context} timezone={timezone} onRecompute={recompute} recomputing={recomputing} />
 
@@ -212,12 +214,28 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 function OpportunityHeader({
   opportunity,
   users,
+  timezone,
   onSave,
 }: {
   opportunity: OpportunityDetail;
   users: UserDto[];
+  timezone: string;
   onSave: (patch: OpportunityPatch) => void | Promise<void>;
 }) {
+  const toasts = useKumoToastManager();
+  const copyReport = async () => {
+    const text = buildOpportunityReport(opportunity, timezone);
+    try {
+      await navigator.clipboard.writeText(text);
+      toasts.add({ title: "報告文をコピーしました", variant: "success" });
+    } catch (caught) {
+      toasts.add({
+        title: "コピーに失敗しました",
+        description: caught instanceof Error ? caught.message : String(caught),
+        variant: "error",
+      });
+    }
+  };
   const [title, setTitle] = useState(opportunity.title);
   const [phaseLabel, setPhaseLabel] = useState(opportunity.phaseLabel ?? "");
   const [expectedAmount, setExpectedAmount] = useState(
@@ -287,6 +305,13 @@ function OpportunityHeader({
           <LifecycleBadge state={opportunity.lifecycleState} />
           <OperationalBadge state={opportunity.operationalState} />
           <RiskBadge level={opportunity.riskLevel} />
+          <button
+            type="button"
+            onClick={() => void copyReport()}
+            className="press rounded-md border border-kumo-line px-2.5 py-1 text-xs font-medium hover:bg-kumo-tint"
+          >
+            報告文をコピー
+          </button>
         </div>
       </div>
       <p className="mt-0.5 text-sm text-kumo-subtle">{opportunity.accountName}</p>
