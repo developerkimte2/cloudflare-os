@@ -391,6 +391,7 @@ export class SalesService {
     if (patch.expectedAmount !== undefined) next.expectedAmount = patch.expectedAmount ?? undefined;
     if (patch.currency !== undefined) next.currency = patch.currency;
     if (patch.expectedCloseDate !== undefined) next.expectedCloseDate = patch.expectedCloseDate ?? undefined;
+    if (patch.proposalDocumentUrl !== undefined) next.proposalDocumentUrl = patch.proposalDocumentUrl?.trim() || undefined;
     if (patch.lifecycleState !== undefined) next.lifecycleState = patch.lifecycleState;
     if (patch.ownerUserId !== undefined) {
       if (!this.repo.getUser(patch.ownerUserId)) throw new NotFoundError("担当者");
@@ -656,15 +657,20 @@ export class SalesService {
     const owner = this.repo.getUser(o.ownerUserId);
     const snapshot = this.repo.latestSnapshot(o.id);
     const nextAction = o.nextActionId ? this.repo.getNextAction(o.nextActionId) : undefined;
+    // Accounts can have several contacts; there is no "primary" flag in the domain model yet, so
+    // the first alphabetically (listPersonsForAccount's order) stands in until one is added.
+    const primaryContact = this.repo.listPersonsForAccount(o.accountId)[0];
     return {
       id: o.id, title: o.title, accountId: o.accountId,
       accountName: account?.displayName ?? UNRESOLVED_ACCOUNT_NAME,
       accountResolutionStatus: account?.resolutionStatus ?? "UNRESOLVED",
       ownerUserId: o.ownerUserId, ownerName: owner?.displayName ?? "?",
       collaboratorUserIds: o.collaboratorUserIds,
+      primaryContactName: primaryContact?.displayName,
       lifecycleState: o.lifecycleState, operationalState: o.operationalState,
       phaseLabel: o.phaseLabel, expectedAmount: o.expectedAmount, currency: o.currency,
-      expectedCloseDate: o.expectedCloseDate, riskLevel: o.riskLevel, riskReason: o.riskReason,
+      expectedCloseDate: o.expectedCloseDate, proposalDocumentUrl: o.proposalDocumentUrl,
+      riskLevel: o.riskLevel, riskReason: o.riskReason,
       currentSituation: snapshot?.currentSituation,
       nextAction: nextAction && nextAction.status === "OPEN" ? nextAction : undefined,
       lastMeaningfulActivityAt: o.lastMeaningfulActivityAt,

@@ -37,6 +37,7 @@ export const opportunities = new Table<Opportunity>("opportunities", "id", [
   col("lifecycle_state", "lifecycleState"), col("operational_state", "operationalState"),
   col("phase_label", "phaseLabel"), col("expected_amount", "expectedAmount"),
   col("currency", "currency"), col("expected_close_date", "expectedCloseDate"),
+  col("proposal_document_url", "proposalDocumentUrl"),
   col("next_action_id", "nextActionId"),
   col("last_meaningful_activity_at", "lastMeaningfulActivityAt"),
   col("last_context_recomputed_at", "lastContextRecomputedAt"), col("risk_level", "riskLevel"),

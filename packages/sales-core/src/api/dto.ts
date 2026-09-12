@@ -79,12 +79,15 @@ export interface OpportunitySummary {
   ownerUserId: string;
   ownerName: string;
   collaboratorUserIds: string[];
+  /** Customer-side point of contact, if the account has a resolved person on file. */
+  primaryContactName?: string;
   lifecycleState: LifecycleState;
   operationalState: Opportunity["operationalState"];
   phaseLabel?: string;
   expectedAmount?: number;
   currency?: string;
   expectedCloseDate?: string;
+  proposalDocumentUrl?: string;
   riskLevel: Opportunity["riskLevel"];
   riskReason?: string;
   currentSituation?: string;
@@ -124,6 +127,7 @@ export interface OpportunityPatch {
   expectedAmount?: number | null;
   currency?: string;
   expectedCloseDate?: string | null;
+  proposalDocumentUrl?: string | null;
   lifecycleState?: LifecycleState;
   ownerUserId?: string;
   collaboratorUserIds?: string[];

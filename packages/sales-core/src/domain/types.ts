@@ -94,6 +94,8 @@ export interface Opportunity {
   expectedAmount?: number;
   currency?: string;
   expectedCloseDate?: string;
+  /** Free-form link to the proposal/quote material for this deal (Drive, Slides, etc.). */
+  proposalDocumentUrl?: string;
   nextActionId?: string;
   lastMeaningfulActivityAt?: string;
   lastContextRecomputedAt?: string;

@@ -224,6 +224,7 @@ function OpportunityHeader({
     opportunity.expectedAmount != null ? String(opportunity.expectedAmount) : "",
   );
   const [expectedCloseDate, setExpectedCloseDate] = useState(opportunity.expectedCloseDate ?? "");
+  const [proposalDocumentUrl, setProposalDocumentUrl] = useState(opportunity.proposalDocumentUrl ?? "");
   const [lifecycleState, setLifecycleState] = useState<LifecycleState>(opportunity.lifecycleState);
   const [ownerUserId, setOwnerUserId] = useState(opportunity.ownerUserId);
   const [saving, setSaving] = useState(false);
@@ -233,6 +234,7 @@ function OpportunityHeader({
     setPhaseLabel(opportunity.phaseLabel ?? "");
     setExpectedAmount(opportunity.expectedAmount != null ? String(opportunity.expectedAmount) : "");
     setExpectedCloseDate(opportunity.expectedCloseDate ?? "");
+    setProposalDocumentUrl(opportunity.proposalDocumentUrl ?? "");
     setLifecycleState(opportunity.lifecycleState);
     setOwnerUserId(opportunity.ownerUserId);
   }, [opportunity]);
@@ -244,6 +246,7 @@ function OpportunityHeader({
     phaseLabel !== (opportunity.phaseLabel ?? "") ||
     amountChanged ||
     expectedCloseDate !== (opportunity.expectedCloseDate ?? "") ||
+    proposalDocumentUrl !== (opportunity.proposalDocumentUrl ?? "") ||
     lifecycleState !== opportunity.lifecycleState ||
     ownerUserId !== opportunity.ownerUserId;
 
@@ -253,6 +256,8 @@ function OpportunityHeader({
     expectedAmount: amountChanged ? (expectedAmount.trim() ? Number(expectedAmount) : null) : undefined,
     expectedCloseDate:
       expectedCloseDate !== (opportunity.expectedCloseDate ?? "") ? expectedCloseDate || null : undefined,
+    proposalDocumentUrl:
+      proposalDocumentUrl !== (opportunity.proposalDocumentUrl ?? "") ? proposalDocumentUrl || null : undefined,
     lifecycleState: lifecycleState !== opportunity.lifecycleState ? lifecycleState : undefined,
     ownerUserId: ownerUserId !== opportunity.ownerUserId ? ownerUserId : undefined,
     version: opportunity.version,
@@ -337,7 +342,21 @@ function OpportunityHeader({
             ))}
           </select>
         </Field>
+        <Field label="提案資料URL">
+          <input
+            type="url"
+            value={proposalDocumentUrl}
+            onChange={(event) => setProposalDocumentUrl(event.currentTarget.value)}
+            placeholder="https://..."
+            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+          />
+        </Field>
       </div>
+      {opportunity.primaryContactName && (
+        <p className="mt-3 text-xs text-kumo-subtle">
+          顧客窓口: <span className="text-kumo-default">{opportunity.primaryContactName}</span>
+        </p>
+      )}
 
       <div className="mt-4 flex justify-end">
         {closingOut ? (

@@ -106,15 +106,17 @@ export default function OpportunitiesPage({
         ) : !data || data.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-kumo-subtle">該当する案件がありません。</p>
         ) : (
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[1120px] text-sm">
             <thead>
               <tr className="border-b border-kumo-line bg-kumo-elevated text-left text-xs text-kumo-subtle">
                 <Th>顧客</Th>
                 <Th>案件</Th>
                 <Th>担当</Th>
+                <Th>顧客窓口</Th>
                 <Th>現在状況</Th>
                 <Th>状態</Th>
                 <Th>次アクション</Th>
+                <Th>資料</Th>
                 <Th>期限</Th>
                 <Th>最終活動</Th>
                 <Th>リスク</Th>
@@ -132,6 +134,7 @@ export default function OpportunitiesPage({
                   <Td className="max-w-[160px] truncate">{opportunity.accountName}</Td>
                   <Td className="max-w-[200px] truncate font-medium text-kumo-default">{opportunity.title}</Td>
                   <Td>{opportunity.ownerName}</Td>
+                  <Td className="max-w-[140px] truncate text-kumo-subtle">{opportunity.primaryContactName ?? "—"}</Td>
                   <Td className="max-w-[240px] truncate text-kumo-subtle">{opportunity.currentSituation ?? "—"}</Td>
                   <Td>
                     <div className="flex flex-col gap-1">
@@ -140,6 +143,20 @@ export default function OpportunitiesPage({
                     </div>
                   </Td>
                   <Td className="max-w-[200px] truncate">{opportunity.nextAction?.title ?? "—"}</Td>
+                  <Td onClick={(event) => opportunity.proposalDocumentUrl && event.stopPropagation()}>
+                    {opportunity.proposalDocumentUrl ? (
+                      <a
+                        href={opportunity.proposalDocumentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm text-kumo-link hover:underline"
+                      >
+                        資料
+                      </a>
+                    ) : (
+                      <span className="text-kumo-subtle">—</span>
+                    )}
+                  </Td>
                   <Td className="whitespace-nowrap">
                     {opportunity.nextAction ? formatDueLabel(opportunity.nextAction.dueAt, timezone, now) : "—"}
                   </Td>
@@ -181,10 +198,16 @@ function Td({
   children,
   className = "",
   align = "left",
+  onClick,
 }: {
   children: React.ReactNode;
   className?: string;
   align?: "left" | "right";
+  onClick?: (event: React.MouseEvent) => void;
 }) {
-  return <td className={`px-3 py-2.5 ${align === "right" ? "text-right" : ""} ${className}`}>{children}</td>;
+  return (
+    <td onClick={onClick} className={`px-3 py-2.5 ${align === "right" ? "text-right" : ""} ${className}`}>
+      {children}
+    </td>
+  );
 }

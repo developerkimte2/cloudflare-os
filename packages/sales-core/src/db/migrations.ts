@@ -294,6 +294,12 @@ CREATE TABLE source_applications (
 );
 `,
   },
+  {
+    id: "0002_opportunity_proposal_document_url",
+    sql: `
+ALTER TABLE opportunities ADD COLUMN proposal_document_url TEXT;
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */
