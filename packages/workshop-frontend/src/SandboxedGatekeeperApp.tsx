@@ -227,6 +227,13 @@ export default function SandboxedGatekeeperApp({ frame, gatekeeperVendorId }: {
   const hostRef = useRef<GatekeeperAppHostImpl | null>(null)
   const connectedRef = useRef(false)
   const invalidatedRef = useRef(false)
+  // The app handshakes exactly once, on load. When the session below is torn down while the
+  // iframe stays mounted (a reconnect swapped `authenticatedApi`, or the frame was refetched with
+  // identical HTML), every RPC in the app would fail forever with "Peer closed MessagePort
+  // connection". Bumping this key remounts the iframe so it handshakes again.
+  const [generation, setGeneration] = useState(0)
+  const staleSessionRef = useRef(false)
+  const lastHtmlRef = useRef(frame.iframeHtml)
   const [overlay, setOverlay] = useState<OverlayState>(null)
   const overlayRef = useRef<OverlayState>(null)
   // Push the Workshop's resolved light/dark mode and deployment accent whenever either changes.
@@ -301,6 +308,11 @@ export default function SandboxedGatekeeperApp({ frame, gatekeeperVendorId }: {
   useEffect(() => {
     connectedRef.current = false
     invalidatedRef.current = false
+    // A changed srcDoc reloads the iframe (and re-handshakes) by itself; only force it otherwise.
+    const htmlChanged = frame.iframeHtml !== lastHtmlRef.current
+    lastHtmlRef.current = frame.iframeHtml
+    if (staleSessionRef.current && !htmlChanged) setGeneration((g) => g + 1)
+    staleSessionRef.current = false
 
     const connect = (port: MessagePort) => {
       if (connectedRef.current) {
@@ -349,6 +361,7 @@ export default function SandboxedGatekeeperApp({ frame, gatekeeperVendorId }: {
     window.addEventListener('message', handleMessage)
     return () => {
       window.removeEventListener('message', handleMessage)
+      staleSessionRef.current = connectedRef.current
       sessionRef.current?.[Symbol.dispose]?.()
       sessionRef.current = null
       hostRef.current?.dispose()
@@ -362,6 +375,7 @@ export default function SandboxedGatekeeperApp({ frame, gatekeeperVendorId }: {
 
   return (
     <iframe
+      key={generation}
       ref={iframeRef}
       srcDoc={frame.iframeHtml}
       // allow-scripts: run the app's JS. allow-modals: its beforeunload unsaved-changes guard. Not

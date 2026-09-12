@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /* eslint-disable react/react-in-jsx-scope */
 
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
   createMemoryHistory,
@@ -177,5 +177,76 @@ describe("SandboxedGatekeeperApp navigation", () => {
       await vi.waitFor(() => expect(router.state.location.pathname).toBe("/"));
     });
     expect(router.state.location.search).toEqual({ prompt: "Create a daily brief." });
+  });
+});
+
+describe("SandboxedGatekeeperApp session recovery", () => {
+  let container: HTMLDivElement | undefined;
+  let root: Root | undefined;
+  const hosts: RpcStub<TestHost>[] = [];
+
+  afterEach(async () => {
+    for (const host of hosts.splice(0)) host[Symbol.dispose]();
+    await act(async () => root?.unmount());
+    container?.remove();
+    vi.restoreAllMocks();
+  });
+
+  function handshake(iframe: HTMLIFrameElement): RpcStub<TestHost> {
+    const { port1, port2 } = new MessageChannel();
+    const host = newMessagePortRpcSession<TestHost>(port1);
+    hosts.push(host);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "handshake" },
+        origin: "null",
+        source: iframe.contentWindow,
+        ports: [port2],
+      }),
+    );
+    return host;
+  }
+
+  it("remounts the iframe so the app re-handshakes after its session is torn down", async () => {
+    // The app handshakes only once, on load: a torn-down session with the iframe left in place
+    // would strand every later RPC on "Peer closed MessagePort connection".
+    const iframeHtml = "<!doctype html><title>Sales OS</title>";
+    const frameA = { iframeHtml, ui: new RpcStub(new EmptyUi()) } as unknown as GatekeeperUiFrame;
+    const frameB = { iframeHtml, ui: new RpcStub(new EmptyUi()) } as unknown as GatekeeperUiFrame;
+    let setFrame: (frame: GatekeeperUiFrame) => void = () => {};
+    function Harness() {
+      const [frame, set] = useState(frameA);
+      setFrame = set;
+      return <SandboxedGatekeeperApp frame={frame} gatekeeperVendorId="sales" />;
+    }
+    const rootRoute = createRootRoute({ component: Harness });
+    const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/" });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+      routeTree: rootRoute.addChildren([indexRoute]),
+    });
+
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root!.render(<RouterProvider router={router} />));
+
+    const first = container.querySelector("iframe");
+    if (!first) throw new Error("Missing gatekeeper iframe");
+    const host1 = handshake(first);
+    await expect(host1.subscribeTheme(new TestThemeReceiver())).resolves.toMatchObject({ mode: "light" });
+
+    // Re-rendering with the very same frame keeps the session and the iframe untouched.
+    await act(async () => setFrame(frameA));
+    expect(container.querySelector("iframe")).toBe(first);
+
+    // A fresh `ui` stub with identical HTML (what a reconnect produces) tears the session down;
+    // the iframe must be replaced so its load-time handshake runs again and connects.
+    await act(async () => setFrame(frameB));
+    const second = container.querySelector("iframe");
+    if (!second) throw new Error("Missing gatekeeper iframe after remount");
+    expect(second).not.toBe(first);
+    const host2 = handshake(second);
+    await expect(host2.subscribeTheme(new TestThemeReceiver())).resolves.toMatchObject({ mode: "light" });
   });
 });
