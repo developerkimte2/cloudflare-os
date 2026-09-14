@@ -273,6 +273,36 @@ export interface AttentionItem {
   message: string;
 }
 
+export interface ManagerKpis {
+  openOpportunities: number;
+  expectedAmountTotal: number;
+  currency: string;
+  /** Lifecycle flipped to WON/LOST this month, approximated by `updatedAt` (there's no separate
+   * close-date field) -- the UI labels this "更新月ベース". */
+  wonThisMonth: number;
+  lostThisMonth: number;
+  stalled: number;
+  highRisk: number;
+  overdueActions: number;
+  /** UNRESOLVED customers that still have an OPEN opportunity (an ignorable UNRESOLVED account with
+   * no open deal doesn't need a manager's attention). */
+  unresolvedCustomers: number;
+  openReviews: number;
+}
+
+export interface ManagerPerUserRow {
+  userId: string;
+  displayName: string;
+  active: boolean;
+  openOpportunities: number;
+  expectedAmountTotal: number;
+  overdueActions: number;
+  stalledOpportunities: number;
+  openReviews: number;
+  lastCaptureAt?: string;
+  capturesLast7Days: number;
+}
+
 export interface ManagerSummary {
   generatedAt: string;
   byLifecycle: { lifecycleState: LifecycleState; count: number }[];
@@ -280,6 +310,9 @@ export interface ManagerSummary {
   highRisk: OpportunitySummary[];
   openReviews: number;
   contracting: OpportunitySummary[];
+  kpis: ManagerKpis;
+  /** Active users first, in the order `listUsers()` returns them; inactive users last. */
+  perUser: ManagerPerUserRow[];
 }
 
 export type ConfigDto = SalesConfig;

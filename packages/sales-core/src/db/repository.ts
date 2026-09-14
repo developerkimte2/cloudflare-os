@@ -227,6 +227,90 @@ export class Repository {
       .map(r => ({ lifecycleState: r.lifecycle_state, count: r.count }));
   }
 
+  /** Manager KPI tiles that are single-row aggregates -- plain SQL beats looping every row in JS. */
+  managerKpiAggregates(monthStart: string, now: string): {
+    expectedAmountTotal: number; wonThisMonth: number; lostThisMonth: number;
+    overdueActions: number; unresolvedCustomers: number;
+  } {
+    const amount = this.db.one<{ total: number }>(
+      "SELECT COALESCE(SUM(expected_amount), 0) AS total FROM opportunities WHERE lifecycle_state = 'OPEN'")!;
+    const won = this.db.one<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM opportunities WHERE lifecycle_state = 'WON' AND updated_at >= ?", monthStart)!;
+    const lost = this.db.one<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM opportunities WHERE lifecycle_state = 'LOST' AND updated_at >= ?", monthStart)!;
+    // Mirrors getToday's "sleeping" rule: a SNOOZED action with a future wake-up doesn't count.
+    const overdue = this.db.one<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM next_actions WHERE status IN ('OPEN','SNOOZED') " +
+      "AND due_at IS NOT NULL AND due_at < ? " +
+      "AND NOT (status = 'SNOOZED' AND snoozed_until IS NOT NULL AND snoozed_until > ?)", now, now)!;
+    const unresolved = this.db.one<{ count: number }>(
+      "SELECT COUNT(DISTINCT a.id) AS count FROM customer_accounts a " +
+      "JOIN opportunities o ON o.account_id = a.id " +
+      "WHERE a.resolution_status = 'UNRESOLVED' AND o.lifecycle_state = 'OPEN'")!;
+    return {
+      expectedAmountTotal: amount.total, wonThisMonth: won.count, lostThisMonth: lost.count,
+      overdueActions: overdue.count, unresolvedCustomers: unresolved.count,
+    };
+  }
+
+  /**
+   * Per-rep table on the Team page: one GROUP BY per metric (never a JOIN across them, which would
+   * multiply rows) merged by user id in JS. `now`/`stalledBefore`/`weekAgo` are ISO instants.
+   */
+  managerPerUserStats(now: string, stalledBefore: string, weekAgo: string): Map<string, {
+    openOpportunities: number; expectedAmountTotal: number; overdueActions: number;
+    stalledOpportunities: number; openReviews: number; lastCaptureAt?: string; capturesLast7Days: number;
+  }> {
+    type Stats = {
+      openOpportunities: number; expectedAmountTotal: number; overdueActions: number;
+      stalledOpportunities: number; openReviews: number; lastCaptureAt?: string; capturesLast7Days: number;
+    };
+    const stats = new Map<string, Stats>();
+    const ensure = (userId: string): Stats => {
+      let s = stats.get(userId);
+      if (!s) {
+        s = { openOpportunities: 0, expectedAmountTotal: 0, overdueActions: 0, stalledOpportunities: 0,
+          openReviews: 0, capturesLast7Days: 0 };
+        stats.set(userId, s);
+      }
+      return s;
+    };
+
+    for (const row of this.db.all<{ owner_user_id: string; count: number; total: number }>(
+      "SELECT owner_user_id, COUNT(*) AS count, COALESCE(SUM(expected_amount), 0) AS total " +
+      "FROM opportunities WHERE lifecycle_state = 'OPEN' GROUP BY owner_user_id")) {
+      const s = ensure(row.owner_user_id);
+      s.openOpportunities = row.count;
+      s.expectedAmountTotal = row.total;
+    }
+    for (const row of this.db.all<{ owner_user_id: string; count: number }>(
+      "SELECT owner_user_id, COUNT(*) AS count FROM opportunities WHERE lifecycle_state = 'OPEN' " +
+      "AND COALESCE(last_meaningful_activity_at, updated_at) < ? GROUP BY owner_user_id", stalledBefore)) {
+      ensure(row.owner_user_id).stalledOpportunities = row.count;
+    }
+    for (const row of this.db.all<{ assigned_user_id: string; count: number }>(
+      "SELECT assigned_user_id, COUNT(*) AS count FROM next_actions " +
+      "WHERE status IN ('OPEN','SNOOZED') AND due_at IS NOT NULL AND due_at < ? " +
+      "AND NOT (status = 'SNOOZED' AND snoozed_until IS NOT NULL AND snoozed_until > ?) " +
+      "GROUP BY assigned_user_id", now, now)) {
+      ensure(row.assigned_user_id).overdueActions = row.count;
+    }
+    for (const row of this.db.all<{ assigned_user_id: string; count: number }>(
+      "SELECT assigned_user_id, COUNT(*) AS count FROM review_items " +
+      "WHERE status = 'OPEN' AND assigned_user_id IS NOT NULL GROUP BY assigned_user_id")) {
+      ensure(row.assigned_user_id).openReviews = row.count;
+    }
+    for (const row of this.db.all<{ submitted_by_user_id: string; last_at: string; recent: number }>(
+      "SELECT submitted_by_user_id, MAX(received_at) AS last_at, " +
+      "SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) AS recent FROM source_documents " +
+      "WHERE submitted_by_user_id IS NOT NULL GROUP BY submitted_by_user_id", weekAgo)) {
+      const s = ensure(row.submitted_by_user_id);
+      s.lastCaptureAt = row.last_at ?? undefined;
+      s.capturesLast7Days = row.recent;
+    }
+    return stats;
+  }
+
   // ---- sources ---------------------------------------------------------------------------------
 
   getSource(id: string): SourceDocument | undefined {

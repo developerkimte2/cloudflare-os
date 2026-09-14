@@ -5,7 +5,7 @@
  */
 import type {
   AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
-  CustomerDetail, ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch,
+  CustomerDetail, ManagerPerUserRow, ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch,
   NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary,
   PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution, TodayAction, TodayView,
   UserDto,
@@ -820,13 +820,42 @@ export class SalesService {
     const now = nowIso(this.ctx.clock);
     const open = this.repo.listOpportunitiesVisibleTo(user, { lifecycleStates: ["OPEN"], limit: 1000 });
     const stalledBefore = addDays(now, -this.config.stalledDays);
+    const stalled = open.filter(o => (o.lastMeaningfulActivityAt ?? o.createdAt) < stalledBefore);
+    const highRisk = open.filter(o => o.riskLevel === "HIGH");
+    const openReviews = this.repo.listReviews("OPEN").length;
+
+    const monthStart = startOfLocalMonth(now, this.config.defaultTimezone);
+    const weekAgo = addDays(now, -7);
+    const aggregates = this.repo.managerKpiAggregates(monthStart, now);
+    const perUserStats = this.repo.managerPerUserStats(now, stalledBefore, weekAgo);
+    const users = this.repo.listUsers();
+    const perUser: ManagerPerUserRow[] = users
+      .map(u => {
+        const s = perUserStats.get(u.id);
+        return {
+          userId: u.id, displayName: u.displayName, active: u.active,
+          openOpportunities: s?.openOpportunities ?? 0, expectedAmountTotal: s?.expectedAmountTotal ?? 0,
+          overdueActions: s?.overdueActions ?? 0, stalledOpportunities: s?.stalledOpportunities ?? 0,
+          openReviews: s?.openReviews ?? 0, lastCaptureAt: s?.lastCaptureAt, capturesLast7Days: s?.capturesLast7Days ?? 0,
+        };
+      })
+      .sort((a, b) => Number(b.active) - Number(a.active));
+
     return {
       generatedAt: now,
       byLifecycle: this.repo.countOpportunitiesByState(),
-      stalled: open.filter(o => (o.lastMeaningfulActivityAt ?? o.createdAt) < stalledBefore).map(o => this.summarize(o)),
-      highRisk: open.filter(o => o.riskLevel === "HIGH").map(o => this.summarize(o)),
+      stalled: stalled.map(o => this.summarize(o)),
+      highRisk: highRisk.map(o => this.summarize(o)),
       contracting: open.filter(o => o.operationalState === "CONTRACTING").map(o => this.summarize(o)),
-      openReviews: this.repo.listReviews("OPEN").length,
+      openReviews,
+      kpis: {
+        openOpportunities: open.length, expectedAmountTotal: aggregates.expectedAmountTotal,
+        currency: this.config.defaultCurrency, wonThisMonth: aggregates.wonThisMonth,
+        lostThisMonth: aggregates.lostThisMonth, stalled: stalled.length, highRisk: highRisk.length,
+        overdueActions: aggregates.overdueActions, unresolvedCustomers: aggregates.unresolvedCustomers,
+        openReviews,
+      },
+      perUser,
     };
   }
 
@@ -1164,6 +1193,15 @@ export function endOfLocalDay(iso: string, timeZone: string): string {
   const noonUtc = Date.parse(`${date}T12:00:00Z`);
   const offsetMinutes = tzOffsetMinutes(noonUtc, timeZone);
   return new Date(Date.parse(`${date}T23:59:59.999Z`) - offsetMinutes * 60_000).toISOString();
+}
+
+/** First instant of the local calendar month containing `iso`, as an ISO UTC string. */
+export function startOfLocalMonth(iso: string, timeZone: string): string {
+  const [year, month] = localDate(iso, timeZone).split("-");
+  const date = `${year}-${month}-01`;
+  const noonUtc = Date.parse(`${date}T12:00:00Z`);
+  const offsetMinutes = tzOffsetMinutes(noonUtc, timeZone);
+  return new Date(Date.parse(`${date}T00:00:00.000Z`) - offsetMinutes * 60_000).toISOString();
 }
 
 function tzOffsetMinutes(utcMs: number, timeZone: string): number {

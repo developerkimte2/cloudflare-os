@@ -1,10 +1,12 @@
 import type { RpcStub } from "capnweb";
 import { ChatCircleDots } from "@phosphor-icons/react";
 import { useState } from "react";
-import type { ManagerSummary, OpportunitySummary, SalesManagementApi, UserDto } from "../../src/management-types";
+import type {
+  ManagerKpis, ManagerPerUserRow, ManagerSummary, OpportunitySummary, SalesManagementApi, UserDto,
+} from "../../src/management-types";
 import { useApiAction, useAsyncData } from "../api";
 import { OpportunityStatusBadge, RiskBadge } from "../components/Badges";
-import { formatDate, formatDateTime } from "../format";
+import { daysSince, formatDate, formatDateTime, formatRelativeDay } from "../format";
 import { LIFECYCLE_LABEL, ROLE_LABEL } from "../labels";
 
 const ROLES: UserDto["role"][] = ["SALES", "MANAGER", "ADMIN"];
@@ -68,7 +70,11 @@ export default function ManagerPage({
         </button>
       </header>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <KpiTiles kpis={data.kpis} />
+
+      <PerRepTable rows={data.perUser} timezone={timezone} />
+
+      <div className="mt-7 flex flex-wrap gap-2">
         {data.byLifecycle.map((row) => (
           <div
             key={row.lifecycleState}
@@ -112,6 +118,89 @@ export default function ManagerPage({
       </section>
     </div>
   );
+}
+
+function KpiTiles({ kpis }: { kpis: ManagerKpis }) {
+  const tiles: Array<{ label: string; value: string }> = [
+    { label: "進行中", value: String(kpis.openOpportunities) },
+    { label: "見込金額", value: `${kpis.expectedAmountTotal.toLocaleString("ja-JP")} ${kpis.currency}` },
+    { label: "今月受注", value: String(kpis.wonThisMonth) },
+    { label: "今月失注", value: String(kpis.lostThisMonth) },
+    { label: "停滞", value: String(kpis.stalled) },
+    { label: "高リスク", value: String(kpis.highRisk) },
+    { label: "期限超過", value: String(kpis.overdueActions) },
+    { label: "未確定顧客", value: String(kpis.unresolvedCustomers) },
+    { label: "確認待ち", value: String(kpis.openReviews) },
+  ];
+  return (
+    <div className="mt-5 flex flex-wrap gap-2">
+      {tiles.map((tile) => (
+        <div key={tile.label} className="rounded-lg border border-kumo-line bg-kumo-control px-3.5 py-2.5">
+          <p className="text-xs text-kumo-subtle">{tile.label}</p>
+          <p className="mt-0.5 text-lg font-semibold text-kumo-default">{tile.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 更新月ベースの受注/失注はKPIタイル側にのみ注記 (このテーブルには出さない)。 */
+function PerRepTable({ rows, timezone }: { rows: ManagerPerUserRow[]; timezone: string }) {
+  const sorted = [...rows].sort((a, b) => b.overdueActions - a.overdueActions);
+  return (
+    <section className="mt-7">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">担当者別</h2>
+      {sorted.length === 0 ? (
+        <p className="text-sm text-kumo-subtle">メンバーがいません。</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-kumo-line">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-kumo-line bg-kumo-elevated text-left text-xs text-kumo-subtle">
+                <th className="px-3 py-2 font-medium">担当</th>
+                <th className="px-3 py-2 font-medium">進行中</th>
+                <th className="px-3 py-2 font-medium">見込額</th>
+                <th className="px-3 py-2 font-medium">期限超過</th>
+                <th className="px-3 py-2 font-medium">停滞</th>
+                <th className="px-3 py-2 font-medium">確認待ち</th>
+                <th className="px-3 py-2 font-medium">最終記録</th>
+                <th className="px-3 py-2 font-medium">直近7日の記録</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-kumo-line">
+              {sorted.map((row) => (
+                <tr key={row.userId} className={row.active ? "" : "opacity-50"}>
+                  <td className="px-3 py-2 font-medium text-kumo-default">{row.displayName}</td>
+                  <td className="px-3 py-2 text-kumo-default">{row.openOpportunities}</td>
+                  <td className="px-3 py-2 text-kumo-default">{row.expectedAmountTotal.toLocaleString("ja-JP")}</td>
+                  <td className={`px-3 py-2 ${row.overdueActions > 0 ? "font-medium text-kumo-danger" : "text-kumo-default"}`}>
+                    {row.overdueActions}
+                  </td>
+                  <td className={`px-3 py-2 ${row.stalledOpportunities > 0 ? "font-medium text-kumo-danger" : "text-kumo-default"}`}>
+                    {row.stalledOpportunities}
+                  </td>
+                  <td className="px-3 py-2 text-kumo-default">{row.openReviews}</td>
+                  <td className="px-3 py-2">
+                    <LastCaptureCell iso={row.lastCaptureAt} timezone={timezone} />
+                  </td>
+                  <td className="px-3 py-2 text-kumo-default">{row.capturesLast7Days}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LastCaptureCell({ iso, timezone }: { iso: string | undefined; timezone: string }) {
+  if (!iso) return <span className="text-kumo-inactive">—</span>;
+  const days = daysSince(iso) ?? 0;
+  if (days >= 3) {
+    return <span className="text-kumo-inactive">{Math.floor(days)}日前</span>;
+  }
+  return <span className="text-kumo-default">{formatRelativeDay(iso, timezone)}</span>;
 }
 
 function OpportunityListSection({

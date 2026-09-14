@@ -8,7 +8,8 @@
  */
 import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
-  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerSummary, NextAction,
+  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerKpis, ManagerPerUserRow,
+  ManagerSummary, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
   OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
@@ -17,7 +18,8 @@ import type {
 
 export type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
-  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerSummary, NextAction,
+  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerKpis, ManagerPerUserRow,
+  ManagerSummary, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
   OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
