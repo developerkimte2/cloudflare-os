@@ -179,6 +179,8 @@ export interface NextAction {
   recommendedAt?: string;
   priority: Priority;
   status: NextActionStatus;
+  /** While SNOOZED, the action stays off the Today view until this instant. Unset = no wake-up. */
+  snoozedUntil?: string;
   generatedBy: GeneratedBy;
   sourceDecisionId?: string;
   createdAt: string;

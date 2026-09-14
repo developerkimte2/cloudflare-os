@@ -116,6 +116,8 @@ export interface NextAction {
   dueAt?: string;
   priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
   status: "OPEN" | "DONE" | "SNOOZED" | "CANCELLED";
+  /** While SNOOZED, hidden from getToday() until this ISO instant. */
+  snoozedUntil?: string;
   generatedBy: "AI" | "USER" | "SYSTEM";
   createdAt: string;
 }
@@ -243,7 +245,7 @@ export interface TodayView {
     kind: "STALLED" | "HIGH_RISK" | "COMMITMENT_OVERDUE" | "UNRESOLVED_CUSTOMER";
     message: string;
   }[];
-  counts: { openOpportunities: number; openActions: number; overdue: number; openReviews: number };
+  counts: { openOpportunities: number; openActions: number; overdue: number; snoozed: number; openReviews: number };
 }
 
 export interface ManagerSummary {
@@ -329,6 +331,8 @@ export interface SalesSession {
   /** Mark done / snooze / cancel, or change title, purpose, due date or priority. */
   updateNextAction(nextActionId: string, patch: {
     status?: NextAction["status"];
+    /** With status SNOOZED: when the action comes back to getToday(). Other statuses clear it. */
+    snoozedUntil?: string | null;
     dueAt?: string | null;
     title?: string;
     purpose?: string;

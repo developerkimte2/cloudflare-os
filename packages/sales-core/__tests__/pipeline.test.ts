@@ -365,6 +365,31 @@ describe("getToday bucketing", () => {
     expect(today.undated.map(a => a.action.id)).toEqual(["a-undated"]);
   });
 
+  it("hides a snoozed action until snoozedUntil, and un-snoozing clears the wake-up time", () => {
+    const llm = new FakeLlmProvider([]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    const opp = makeOpportunity(svc.repo, account.id, user.id);
+    const base = { opportunityId: opp.id, assignedUserId: user.id, actionType: "CALL" as const,
+      purpose: "p", dueAt: "2026-09-07T00:00:00.000Z", priority: "NORMAL" as const,
+      status: "OPEN" as const, generatedBy: "USER" as const, createdAt: NOW, updatedAt: NOW };
+    svc.repo.insertNextAction({ ...base, id: "a-sleep", title: "sleeping" });
+    svc.repo.insertNextAction({ ...base, id: "a-woke", title: "woken" });
+
+    svc.updateNextAction({ userId: user.id }, "a-sleep", { status: "SNOOZED", snoozedUntil: addDays(NOW, 2) });
+    svc.updateNextAction({ userId: user.id }, "a-woke", { status: "SNOOZED", snoozedUntil: addDays(NOW, -1) });
+
+    const today = svc.getToday({ userId: user.id });
+    expect(today.now.map(a => a.action.id)).toEqual(["a-woke"]);
+    expect(today.counts).toMatchObject({ openActions: 1, overdue: 1, snoozed: 1 });
+
+    const reopened = svc.updateNextAction({ userId: user.id }, "a-sleep", { status: "OPEN" });
+    expect(reopened.snoozedUntil).toBeUndefined();
+    expect(svc.repo.getNextAction("a-sleep")!.snoozedUntil).toBeUndefined();
+    expect(svc.getToday({ userId: user.id }).counts.snoozed).toBe(0);
+  });
+
   it("flags STALLED opportunities once past stalledDays, and COMMITMENT_OVERDUE for overdue commitments", () => {
     const llm = new FakeLlmProvider([]);
     const svc = makeService(llm, NOW);

@@ -68,6 +68,17 @@ export function localInputToIso(value: string, timeZone: string): string | undef
   return new Date(asUtc - offset).toISOString();
 }
 
+/** `YYYY-MM-DD` of the day `daysAhead` after today in `timeZone`, for an `<input type="date">`. */
+export function localDateAhead(daysAhead: number, timeZone: string, now: Date = new Date()): string {
+  const { y, m, d } = ymdInZone(now, timeZone);
+  return new Date(Date.UTC(y, m - 1, d + daysAhead)).toISOString().slice(0, 10);
+}
+
+/** The instant a snooze ends: `hour`:00 on local date `ymd` (`YYYY-MM-DD`) in `timeZone`. */
+export function snoozeEndIso(ymd: string, timeZone: string, hour = 9): string | undefined {
+  return localInputToIso(`${ymd}T${String(hour).padStart(2, "0")}:00`, timeZone);
+}
+
 export function formatDate(iso: string | undefined | null, timeZone: string, locale = "ja-JP"): string {
   if (!iso) return "";
   return new Intl.DateTimeFormat(locale, {

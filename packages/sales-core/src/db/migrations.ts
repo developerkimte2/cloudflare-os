@@ -300,6 +300,12 @@ CREATE TABLE source_applications (
 ALTER TABLE opportunities ADD COLUMN proposal_document_url TEXT;
 `,
   },
+  {
+    id: "0003_next_action_snoozed_until",
+    sql: `
+ALTER TABLE next_actions ADD COLUMN snoozed_until TEXT;
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

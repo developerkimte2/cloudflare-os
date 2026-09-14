@@ -115,7 +115,8 @@ export default function TodayPage({
           おはようございます、{data.user.displayName} さん。
         </h1>
         <p className="mt-1 text-sm text-kumo-subtle">
-          今やること {data.counts.openActions} 件（うち期限超過 {data.counts.overdue} 件）・確認待ち{" "}
+          今やること {data.counts.openActions} 件（うち期限超過 {data.counts.overdue} 件）
+          {data.counts.snoozed > 0 && `・スヌーズ中 ${data.counts.snoozed} 件`}・確認待ち{" "}
           {data.counts.openReviews} 件・進行中の案件 {data.counts.openOpportunities} 件
         </p>
       </header>

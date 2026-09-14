@@ -75,7 +75,7 @@ export const nextActions = new Table<NextAction>("next_actions", "id", [
   col("id", "id"), col("opportunity_id", "opportunityId"), col("assigned_user_id", "assignedUserId"),
   col("action_type", "actionType"), col("title", "title"), col("purpose", "purpose"),
   col("due_at", "dueAt"), col("recommended_at", "recommendedAt"), col("priority", "priority"),
-  col("status", "status"), col("generated_by", "generatedBy"),
+  col("status", "status"), col("snoozed_until", "snoozedUntil"), col("generated_by", "generatedBy"),
   col("source_decision_id", "sourceDecisionId"), col("created_at", "createdAt"),
   col("updated_at", "updatedAt"),
 ]);

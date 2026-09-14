@@ -279,7 +279,12 @@ export class SalesService {
     const endOfToday = endOfLocalDay(now, user.timezone);
     const weekAhead = addDays(endOfToday, 7);
 
-    const actions = this.repo.listOpenNextActionsForUser(user.id);
+    // A snooze with a wake-up time hides the action until then; once it passes, the action comes
+    // back (still SNOOZED, so the row shows it was put off) and counts toward overdue again.
+    const isSleeping = (a: NextAction) => a.status === "SNOOZED" && !!a.snoozedUntil && a.snoozedUntil > now;
+    const listed = this.repo.listOpenNextActionsForUser(user.id);
+    const actions = listed.filter(a => !isSleeping(a));
+    const snoozedCount = listed.length - actions.length;
     const nowList: TodayAction[] = [];
     const upcoming: TodayAction[] = [];
     const undated: TodayAction[] = [];
@@ -339,7 +344,7 @@ export class SalesService {
       recentCaptures: this.repo.listRecentSources(user.id, 5),
       counts: {
         openOpportunities: visible.length, openActions: actions.length,
-        overdue: overdueCount, openReviews: reviews.length,
+        overdue: overdueCount, snoozed: snoozedCount, openReviews: reviews.length,
       },
     };
   }
@@ -469,9 +474,19 @@ export class SalesService {
     if (patch.dueAt !== undefined && patch.dueAt !== null && !isIsoDateTime(patch.dueAt)) {
       throw new TypeError("dueAt は ISO 8601 で指定してください");
     }
+    if (patch.snoozedUntil !== undefined && patch.snoozedUntil !== null && !isIsoDateTime(patch.snoozedUntil)) {
+      throw new TypeError("snoozedUntil は ISO 8601 で指定してください");
+    }
+    const status = patch.status ?? action.status;
+    const snoozedUntil = status !== "SNOOZED"
+      ? undefined
+      : patch.snoozedUntil !== undefined
+        ? (patch.snoozedUntil ? new Date(patch.snoozedUntil).toISOString() : undefined)
+        : action.snoozedUntil;
     const next: NextAction = {
       ...action,
-      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      status,
+      snoozedUntil,
       ...(patch.title !== undefined ? { title: patch.title } : {}),
       ...(patch.purpose !== undefined ? { purpose: patch.purpose } : {}),
       ...(patch.priority !== undefined ? { priority: patch.priority } : {}),

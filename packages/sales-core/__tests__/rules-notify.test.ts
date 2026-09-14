@@ -20,7 +20,7 @@ function today(overrides: Partial<TodayView> = {}): TodayView {
     },
     date: "2026-09-10", generatedAt: "2026-09-10T00:00:00Z",
     now: [], upcoming: [], undated: [], reviews: [], attention: [], recentCaptures: [],
-    counts: { openOpportunities: 0, openActions: 0, overdue: 0, openReviews: 0 },
+    counts: { openOpportunities: 0, openActions: 0, overdue: 0, snoozed: 0, openReviews: 0 },
     ...overrides,
   };
 }

@@ -146,6 +146,8 @@ export interface NextActionFilter {
 
 export interface NextActionPatch {
   status?: NextActionStatus;
+  /** Only meaningful with SNOOZED; any other status clears it. */
+  snoozedUntil?: string | null;
   dueAt?: string | null;
   title?: string;
   purpose?: string;
@@ -190,7 +192,8 @@ export interface TodayView {
   reviews: ReviewDto[];
   attention: AttentionItem[];
   recentCaptures: SourceDocument[];
-  counts: { openOpportunities: number; openActions: number; overdue: number; openReviews: number };
+  /** `snoozed`: actions hidden from this view until their snoozedUntil passes. */
+  counts: { openOpportunities: number; openActions: number; overdue: number; snoozed: number; openReviews: number };
 }
 
 export interface TodayAction {
