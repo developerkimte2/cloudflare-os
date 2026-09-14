@@ -1,7 +1,7 @@
 import type { RpcStub } from "capnweb";
 import { useState } from "react";
 import type { CaptureResult, SalesManagementApi, WhoAmI } from "../../src/management-types";
-import { useApiAction } from "../api";
+import { pollCapture, useApiAction } from "../api";
 import { CaptureResultView } from "./CaptureResultView";
 
 /**
@@ -42,14 +42,25 @@ export function PinnedCaptureBox({
   const [text, setText] = useState("");
   const [lastText, setLastText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [result, setResult] = useState<CaptureResult>();
 
   const submit = async (body: string) => {
     if (!body.trim() || submitting) return;
     setSubmitting(true);
+    setAccepted(false);
     setLastText(body);
     try {
-      const captured = await runAction(() => api.capture(body, { opportunityId }), "取り込みに失敗しました");
+      const receipt = await runAction(() => api.captureAsync(body, { opportunityId }), "取り込みに失敗しました");
+      if (!receipt) return;
+      onCaptured(); // shows the memo as "受付済み" wherever the page lists captures right away
+      if (receipt.duplicate) {
+        const current = await runAction(() => api.getCapture(receipt.sourceId), "取込状況の取得に失敗しました");
+        if (current) { setResult(current); setText(""); }
+        return;
+      }
+      setAccepted(true);
+      const captured = await runAction(() => pollCapture(api, receipt.sourceId), "取り込み結果の取得に失敗しました");
       if (captured) {
         setResult(captured);
         setText("");
@@ -57,6 +68,7 @@ export function PinnedCaptureBox({
       }
     } finally {
       setSubmitting(false);
+      setAccepted(false);
     }
   };
 
@@ -77,7 +89,7 @@ export function PinnedCaptureBox({
           onClick={() => void submit(text)}
           className="press rounded-lg bg-kumo-brand px-3.5 py-1.5 text-sm font-medium text-white hover:bg-kumo-brand-hover disabled:opacity-50"
         >
-          {submitting ? "取り込み中…" : "この案件に取り込む"}
+          {submitting ? (accepted ? "受付済み・処理中…" : "取り込み中…") : "この案件に取り込む"}
         </button>
       </div>
       {result && (

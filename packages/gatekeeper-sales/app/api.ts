@@ -3,7 +3,9 @@
  * toasts, and a small data-fetch hook for the read side (loading / error / retry).
  */
 import { useKumoToastManager } from "@cloudflare/kumo";
+import type { RpcStub } from "capnweb";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CaptureResult, SalesManagementApi } from "../src/management-types";
 
 export function errorMessage(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught);
@@ -27,6 +29,27 @@ export function useApiAction() {
     },
     [toasts],
   );
+}
+
+/**
+ * Polls `getCapture(sourceId)` until captureAsync's alarm-driven queue has moved it out of
+ * RECEIVED/PROCESSING, or the budget runs out. On timeout, whatever state it's still in is returned
+ * as-is -- the rep can still see it (and retry) in the recent-captures list.
+ */
+export async function pollCapture(
+  api: RpcStub<SalesManagementApi>, sourceId: string,
+  { intervalMs = 3000, timeoutMs = 5 * 60 * 1000 }: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<CaptureResult> {
+  const deadline = Date.now() + timeoutMs;
+  let current = await api.getCapture(sourceId);
+  while (
+    (current.source.processingStatus === "RECEIVED" || current.source.processingStatus === "PROCESSING") &&
+    Date.now() < deadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    current = await api.getCapture(sourceId);
+  }
+  return current;
 }
 
 export type AsyncState<T> = {

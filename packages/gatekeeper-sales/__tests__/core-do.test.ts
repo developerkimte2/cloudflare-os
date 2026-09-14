@@ -3,9 +3,10 @@
  * This is what proves the SqlExecutor adapter, migrations and the whole capture pipeline work on
  * the production storage engine (the sales-core suite runs them on node:sqlite).
  */
-import { env } from "cloudflare:test";
+import type { CaptureResult } from "@gadgets/sales-core";
+import { env, runDurableObjectAlarm } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SalesCoreDurableObject } from "../src/sales-core-do.js";
+import type { Caller, SalesCoreDurableObject } from "../src/sales-core-do.js";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -181,6 +182,73 @@ describe("SalesCoreDurableObject (workerd + DO SQLite)", () => {
       // identity, so an accountId that happens to be flagged admin still hits the empty-users path.
       const result = await core.sendMorningBrief({ accountId: "ghost", isAdmin: true });
       expect(result).toEqual({ sent: false, recipientCount: 0 });
+    });
+  });
+
+  describe("captureAsync + alarm (instant-accept queue)", () => {
+    // captureAsync arms the alarm for `Date.now()` (fire ASAP), so under real workerd timers the
+    // runtime's own background scheduler can win the race against an explicit runDurableObjectAlarm
+    // call -- both are valid triggers for the same alarm. Poll for the outcome instead of asserting
+    // on which one actually fired it (runDurableObjectAlarm is still called, as a best-effort nudge,
+    // and legitimately returns false when the background scheduler got there first).
+    async function waitUntilProcessed(
+      core: { getCapture(caller: Caller, sourceId: string): Promise<CaptureResult> } & DurableObjectStub,
+      caller: Caller, sourceId: string,
+    ): Promise<CaptureResult> {
+      for (let i = 0; i < 50; i++) {
+        await runDurableObjectAlarm(core);
+        const current = await core.getCapture(caller, sourceId);
+        if (current.source.processingStatus !== "RECEIVED") return current;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      throw new Error(`timed out waiting for source ${sourceId} to leave RECEIVED`);
+    }
+
+    it("returns immediately with the memo RECEIVED, then the alarm processes it", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: false };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      mockLlmOnce(EXTRACTION);
+      const receipt = await core.captureAsync(caller,
+        "今日ABCの山田さんと話して、100万はOK。金曜に社内承認が出る。通れば来週契約。月曜に電話する。");
+      expect(receipt.duplicate).toBe(false);
+
+      const done = await waitUntilProcessed(core, caller, receipt.sourceId);
+      expect(done.source.processingStatus).toBe("REVIEW_REQUIRED");
+      expect(done.opportunity?.operationalState).toBe("WAITING_CUSTOMER");
+    });
+
+    it("drains multiple queued memos", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: false };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      mockLlmOnce({ ...EXTRACTION, entities: { account_candidates: [{ name: "ABC株式会社", confidence: 0.9 }], person_candidates: [] } });
+      const first = await core.captureAsync(caller, "ABCの山田さんと打合せ。100万で提示。");
+      mockLlmOnce({ ...EXTRACTION, entities: { account_candidates: [{ name: "XYZ社", confidence: 0.9 }], person_candidates: [] } });
+      const second = await core.captureAsync(caller, "XYZの鈴木さんと打合せ。来月また連絡。");
+
+      expect((await waitUntilProcessed(core, caller, first.sourceId)).source.processingStatus).toBe("REVIEW_REQUIRED");
+      expect((await waitUntilProcessed(core, caller, second.sourceId)).source.processingStatus).toBe("REVIEW_REQUIRED");
+    });
+
+    it("does not re-run the LLM for a duplicate capture", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: false };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      const text = "ABCの山田さんと打合せ。100万で提示。";
+      mockLlmOnce({ ...EXTRACTION, entities: { account_candidates: [{ name: "ABC株式会社", confidence: 0.9 }], person_candidates: [] } });
+      const first = await core.captureAsync(caller, text);
+      await waitUntilProcessed(core, caller, first.sourceId);
+
+      const again = await core.captureAsync(caller, text);
+      expect(again.duplicate).toBe(true);
+      expect(again.sourceId).toBe(first.sourceId);
+      // No alarm should have been (re-)armed for a duplicate -- nothing left RECEIVED to drain, and
+      // no LLM reply was scripted for it (the afterEach `replies` check would fail if one ran).
+      expect(await runDurableObjectAlarm(core)).toBe(false);
     });
   });
 });

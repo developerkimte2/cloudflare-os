@@ -11,7 +11,7 @@ import { validateRpc } from "capnweb-validate";
 import { createLogger } from "@gadgets/backend-utils/logger";
 import {
   DurableObjectSqlExecutor, Repository, SalesService, buildMorningBrief, loadConfig, localDate,
-  migrate, morningBriefMessageHash, newId, nowIso, systemClock, MORNING_BRIEF_NOTIFICATION_TYPE,
+  migrate, morningBriefMessageHash, newId, nowIso, processPending, systemClock, MORNING_BRIEF_NOTIFICATION_TYPE,
   type AccountPatch, type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog,
   type CaptureOptions, type CaptureResult, type Commitment, type ConfigDto, type CoreContext,
   type CustomerAccount, type CustomerDetail, type CustomerPerson, type ManagerSummary,
@@ -77,6 +77,16 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
       log: (event, fields) => logger.info(event, { event, ...(fields as Partial<SalesLogFields>) }),
     };
     this.#service = new SalesService(core);
+
+    // Catch-up: a redeploy or eviction can drop an armed alarm while RECEIVED sources are still
+    // waiting (captureAsync already wrote the row; only the alarm that would drain it was lost).
+    // Re-arm on cold start so the backlog isn't stuck forever. Cheap (LIMIT 1) and runs once per DO
+    // instantiation, not per request.
+    if (repo.listSourcesByStatus("RECEIVED", 1).length > 0) {
+      ctx.storage.getAlarm().then(existing => {
+        if (existing === null) return ctx.storage.setAlarm(Date.now());
+      }).catch(err => logger.info("catch-up alarm check failed", { event: "core.catchup_alarm_failed", error: String(err) }));
+    }
   }
 
   // ---- identity ---------------------------------------------------------------------------------
@@ -168,6 +178,19 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
 
   async capture(caller: Caller, text: string, options?: CaptureOptions): Promise<CaptureResult> {
     return this.#service.capture(this.#actor(caller), text, options ?? {});
+  }
+
+  /**
+   * Instant-accept capture: stores the memo (RECEIVED) and returns immediately, letting the alarm
+   * drain it in the background. Use for UI captures where the rep shouldn't wait on the LLM call;
+   * `capture()` above stays synchronous for agent callers that need the result right away.
+   */
+  async captureAsync(caller: Caller, text: string, options?: CaptureOptions): Promise<{ sourceId: string; duplicate: boolean }> {
+    const receipt = await this.#service.receive(this.#actor(caller), text, options ?? {});
+    if (!receipt.duplicate && (await this.ctx.storage.getAlarm()) === null) {
+      await this.ctx.storage.setAlarm(Date.now());
+    }
+    return receipt;
   }
 
   async askQuestion(caller: Caller, question: string): Promise<AnswerResult> {
@@ -300,6 +323,22 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
 
   async listAudit(caller: Caller, entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]> {
     return this.#service.listAudit(this.#actor(caller), entityType, entityId, limit);
+  }
+
+  /**
+   * Drains the RECEIVED backlog left by captureAsync(). Cloudflare guarantees a DO's alarm handler
+   * never overlaps a still-running invocation for the same instance, and processPending() itself
+   * processes sequentially, so no extra locking is needed here.
+   */
+  async alarm(): Promise<void> {
+    try {
+      const result = await processPending(this.#service.ctx);
+      if (result.remaining > 0) await this.ctx.storage.setAlarm(Date.now() + 1000);
+    } catch (err) {
+      // Never let a bug here silently drop the queue: re-arm so the next tick can retry.
+      logger.info("alarm-driven processPending failed", { event: "core.process_pending_failed", error: String(err) });
+      await this.ctx.storage.setAlarm(Date.now() + 1000);
+    }
   }
 
   #actor(caller: Caller): Actor {

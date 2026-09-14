@@ -46,7 +46,14 @@ export function CaptureBox({
   ai: WhoAmI["ai"];
   /** 未設定 (Workers AI 未構成) なら「音声ファイル」ボタンを出さない (plans/sales-os-voice.md V3)。 */
   transcription: WhoAmI["transcription"];
-  onCapture: (text: string, options?: CaptureOptions) => Promise<CaptureResult | undefined>;
+  /**
+   * `onAccepted` fires as soon as the memo is durably stored (captureAsync's instant-accept), well
+   * before the AI has run -- lets this box show a "受付済み・処理中…" placeholder instead of a bare
+   * spinner for however long the alarm-driven queue takes.
+   */
+  onCapture: (
+    text: string, options?: CaptureOptions, onAccepted?: () => void,
+  ) => Promise<CaptureResult | undefined>;
   onAsk: (question: string) => Promise<AnswerResult | undefined>;
   /** 何も保存しない: 文字起こし結果をテキストエリアに入れるだけで、送信は既存の取り込みボタンに任せる。 */
   onTranscribe: (audio: ArrayBuffer, mimeType: string) => Promise<{ text: string; modelName: string } | undefined>;
@@ -61,6 +68,7 @@ export function CaptureBox({
   const [sourceType, setSourceType] = useState<SourceTypeOption | "">("");
   const [occurredAtLocal, setOccurredAtLocal] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const [recording, setRecording] = useState(false);
@@ -107,10 +115,11 @@ export function CaptureBox({
 
   const runCapture = async (body: string, options?: CaptureOptions) => {
     setSubmitting(true);
+    setAccepted(false);
     setLastText(body);
     setLastOptions(options);
     try {
-      const captured = await onCapture(body, options);
+      const captured = await onCapture(body, options, () => setAccepted(true));
       if (captured) {
         setResult(captured);
         setAnswer(undefined);
@@ -118,6 +127,7 @@ export function CaptureBox({
       }
     } finally {
       setSubmitting(false);
+      setAccepted(false);
     }
   };
 
@@ -324,7 +334,15 @@ export function CaptureBox({
           onClick={submit}
           className="press rounded-lg bg-kumo-brand px-4 py-2 text-sm font-medium text-white hover:bg-kumo-brand-hover disabled:opacity-50"
         >
-          {submitting ? (isQuestion ? "検索中…" : "取り込み中…") : isQuestion ? "検索する" : "取り込む"}
+          {submitting
+            ? isQuestion
+              ? "検索中…"
+              : accepted
+                ? "受付済み・処理中…"
+                : "取り込み中…"
+            : isQuestion
+              ? "検索する"
+              : "取り込む"}
         </button>
       </div>
       {showOptions && (

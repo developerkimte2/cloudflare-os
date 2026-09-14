@@ -47,6 +47,11 @@ export interface SalesManagementApi {
   getToday(): Promise<TodayView>;
 
   capture(text: string, options?: CaptureOptions): Promise<CaptureResult>;
+  /**
+   * Instant-accept variant: stores the memo and returns immediately (no AI wait); a Durable Object
+   * alarm processes it in the background. The UI polls `getCapture(sourceId)` for the result.
+   */
+  captureAsync(text: string, options?: CaptureOptions): Promise<{ sourceId: string; duplicate: boolean }>;
   /** Answers a question about existing opportunities instead of capturing the text (does not store anything). */
   askQuestion(question: string): Promise<AnswerResult>;
   /**

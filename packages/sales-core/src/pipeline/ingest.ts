@@ -153,6 +153,41 @@ export async function processSource(ctx: CoreContext, sourceId: string): Promise
     applyExtraction(ctx, source, submitter, extraction, { referenceTime, modelName, repairs }));
 }
 
+export interface ProcessPendingResult {
+  /** Ids of sources this call actually processed (in received-at order). */
+  processed: string[];
+  /** RECEIVED sources still waiting beyond this call's `limit` — the caller should run again. */
+  remaining: number;
+}
+
+/**
+ * Drains the RECEIVED backlog for the alarm-driven queue (CaptureOptions instant-accept):
+ * processSource() one at a time, oldest first. FAILED sources are *not* picked up here — a failed
+ * extraction needs a human's explicit retryCapture(), not an automatic retry loop.
+ *
+ * Each source is processed sequentially (not concurrently): processSource's own RECEIVED/FAILED
+ * guard, combined with it flipping the row to PROCESSING synchronously before its first await,
+ * already prevents double-processing — no extra locking is needed as long as this loop itself
+ * never starts a second processSource before the first one finishes.
+ */
+export async function processPending(ctx: CoreContext, limit = 20): Promise<ProcessPendingResult> {
+  const batch = ctx.repo.listSourcesByStatus("RECEIVED", limit);
+  const processed: string[] = [];
+  for (const source of batch) {
+    try {
+      await processSource(ctx, source.id);
+    } catch (err) {
+      // processSource already turns an extraction/LLM failure into a FAILED row without throwing;
+      // reaching here means something unexpected (e.g. a DB error) — log and move on so one bad
+      // row can't stall the rest of the batch or stop the alarm from being replanned.
+      logEvent(ctx, "source.process_pending_failed", { sourceId: source.id, error: String(err) });
+    }
+    processed.push(source.id);
+  }
+  const remaining = ctx.repo.listSourcesByStatus("RECEIVED", 1).length;
+  return { processed, remaining };
+}
+
 // ---------------------------------------------------------------------------------------------
 
 function knownAccountsFor(ctx: CoreContext): KnownAccount[] {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeLlmProvider } from "../src/ai/provider.js";
-import { captureText, processSource } from "../src/pipeline/ingest.js";
+import { captureText, processPending, processSource } from "../src/pipeline/ingest.js";
 import { AuthorizationError, NotFoundError } from "../src/service/sales-service.js";
 import { addDays, newId } from "../src/domain/util.js";
 import { extractionJson, makeAccount, makeOpportunity, makeService, makeUser } from "./helpers.js";
@@ -284,6 +284,60 @@ describe("failure handling", () => {
     expect(retried.source.processingStatus).not.toBe("FAILED");
     expect(retried.error).toBeUndefined();
     expect(retried.activity).toBeDefined();
+  });
+});
+
+describe("processPending (alarm-driven queue)", () => {
+  it("drains RECEIVED sources oldest-first, leaves a failure as FAILED, and reports no remaining", async () => {
+    const llm = new FakeLlmProvider([extractionJson({}), extractionJson({})]); // 2 of 3 succeed
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const first = await captureText(svc.ctx, { userId: user.id, text: "1件目" });
+    const second = await captureText(svc.ctx, { userId: user.id, text: "2件目" });
+    const third = await captureText(svc.ctx, { userId: user.id, text: "3件目" }); // no response left for this one
+    expect(svc.repo.getSource(first.sourceId)!.processingStatus).toBe("RECEIVED"); // captureText alone never processes
+
+    const result = await processPending(svc.ctx);
+    expect(result.processed).toEqual([first.sourceId, second.sourceId, third.sourceId]);
+    expect(result.remaining).toBe(0);
+    expect(svc.repo.getSource(first.sourceId)!.processingStatus).not.toBe("RECEIVED");
+    expect(svc.repo.getSource(second.sourceId)!.processingStatus).not.toBe("RECEIVED");
+    expect(svc.repo.getSource(third.sourceId)!.processingStatus).toBe("FAILED");
+  });
+
+  it("does not pick up a FAILED source — that still needs an explicit retryCapture", async () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const failed = await svc.capture({ userId: user.id }, "テキスト");
+    expect(failed.source.processingStatus).toBe("FAILED");
+
+    const result = await processPending(svc.ctx);
+    expect(result.processed).toEqual([]);
+    expect(svc.repo.getSource(failed.source.id)!.processingStatus).toBe("FAILED");
+  });
+
+  it("respects limit and reports how many are still waiting", async () => {
+    const llm = new FakeLlmProvider([extractionJson({}), extractionJson({})]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const first = await captureText(svc.ctx, { userId: user.id, text: "1件目" });
+    await captureText(svc.ctx, { userId: user.id, text: "2件目" });
+
+    const result = await processPending(svc.ctx, 1);
+    expect(result.processed).toEqual([first.sourceId]);
+    expect(result.remaining).toBe(1);
+  });
+
+  it("a source already PROCESSING (mid-flight) is not picked up again", async () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const receipt = await captureText(svc.ctx, { userId: user.id, text: "テキスト" });
+    const source = svc.repo.getSource(receipt.sourceId)!;
+    svc.repo.updateSource({ ...source, processingStatus: "PROCESSING" });
+
+    const result = await processPending(svc.ctx);
+    expect(result.processed).toEqual([]);
+    expect(result.remaining).toBe(0); // PROCESSING is not RECEIVED, so it isn't "waiting" either
   });
 });
 

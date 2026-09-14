@@ -252,6 +252,12 @@ export class Repository {
       : T.sourceDocuments.select(this.db, "ORDER BY received_at DESC LIMIT ?", limit);
   }
 
+  /** Oldest first, so a backlog drains in submission order. Used by the alarm-driven queue. */
+  listSourcesByStatus(status: SourceDocument["processingStatus"], limit = 20): SourceDocument[] {
+    return T.sourceDocuments.select(this.db,
+      "WHERE processing_status = ? ORDER BY received_at ASC LIMIT ?", status, limit);
+  }
+
   // ---- activities / commitments / next actions -------------------------------------------------
 
   insertActivity(activity: Activity): void {

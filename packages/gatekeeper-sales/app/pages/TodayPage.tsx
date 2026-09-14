@@ -11,7 +11,7 @@ import type {
   UserDto,
   WhoAmI,
 } from "../../src/management-types";
-import { useApiAction, useAsyncData } from "../api";
+import { pollCapture, useApiAction, useAsyncData } from "../api";
 import { AiAttribution } from "../components/AiAttribution";
 import { CaptureBox } from "../components/CaptureBox";
 import { CaptureResultView } from "../components/CaptureResultView";
@@ -78,8 +78,15 @@ export default function TodayPage({
     refresh();
   };
 
-  const capture = async (text: string, options?: CaptureOptions) => {
-    const result = await runAction(() => api.capture(text, options), "取り込みに失敗しました");
+  const capture = async (text: string, options?: CaptureOptions, onAccepted?: () => void) => {
+    const receipt = await runAction(() => api.captureAsync(text, options), "取り込みに失敗しました");
+    if (!receipt) return undefined;
+    refresh(); // shows the memo as "受付済み" in 最近の取込 right away
+    if (receipt.duplicate) {
+      return runAction(() => api.getCapture(receipt.sourceId), "取込状況の取得に失敗しました");
+    }
+    onAccepted?.();
+    const result = await runAction(() => pollCapture(api, receipt.sourceId), "取り込み結果の取得に失敗しました");
     refresh();
     return result;
   };

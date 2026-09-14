@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CaptureOptions, CaptureResult, WhoAmI } from "../../src/management-types";
 import { AiAttribution } from "./AiAttribution";
 
-type RowState = "pending" | "running" | "done" | "failed";
+type RowState = "pending" | "running" | "accepted" | "done" | "failed";
 
 interface Row {
   chunk: string;
@@ -41,7 +41,9 @@ export function BatchCaptureView({
 }: {
   chunks: string[];
   ai: WhoAmI["ai"];
-  onCapture: (text: string, options?: CaptureOptions) => Promise<CaptureResult | undefined>;
+  onCapture: (
+    text: string, options?: CaptureOptions, onAccepted?: () => void,
+  ) => Promise<CaptureResult | undefined>;
   onOpenOpportunity: (opportunityId: string) => void;
   onDone: () => void;
 }) {
@@ -55,7 +57,8 @@ export function BatchCaptureView({
     for (let i = startIndex; i < chunks.length; i++) {
       if (cancelledRef.current) break;
       setRows((current) => current.map((r, idx) => (idx === i ? { ...r, state: "running" } : r)));
-      const result = await onCapture(chunks[i]!);
+      const result = await onCapture(chunks[i]!, undefined, () =>
+        setRows((current) => current.map((r, idx) => (idx === i && r.state === "running" ? { ...r, state: "accepted" } : r))));
       setRows((current) =>
         current.map((r, idx) =>
           idx === i ? { ...r, state: result ? "done" : "failed", result } : r,
@@ -79,11 +82,13 @@ export function BatchCaptureView({
 
   const retryOne = (index: number) => {
     setRows((current) => current.map((r, idx) => (idx === index ? { ...r, state: "running" } : r)));
-    void onCapture(chunks[index]!).then((result) => {
-      setRows((current) =>
-        current.map((r, idx) => (idx === index ? { ...r, state: result ? "done" : "failed", result } : r)),
-      );
-    });
+    void onCapture(chunks[index]!, undefined, () =>
+      setRows((current) => current.map((r, idx) => (idx === index && r.state === "running" ? { ...r, state: "accepted" } : r))))
+      .then((result) => {
+        setRows((current) =>
+          current.map((r, idx) => (idx === index ? { ...r, state: result ? "done" : "failed", result } : r)),
+        );
+      });
   };
 
   return (
@@ -131,6 +136,7 @@ export function BatchCaptureView({
               <span className="shrink-0">
                 {row.state === "pending" && <span className="text-kumo-inactive">待機中</span>}
                 {row.state === "running" && <span className="text-kumo-inactive">取り込み中…</span>}
+                {row.state === "accepted" && <span className="text-kumo-inactive">受付済み・処理中…</span>}
                 {row.state === "done" && summary && (
                   <button
                     type="button"
