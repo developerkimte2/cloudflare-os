@@ -36,6 +36,18 @@ export interface AccountResolution {
   unmatchedPersons: Extraction["entities"]["person_candidates"];
 }
 
+/**
+ * An UNRESOLVED account is itself an unconfirmed AI guess (設計書 §13.4) — often the placeholder's
+ * own name is bogus (a hallucinated company name, or the AI echoing back a "company unknown"
+ * phrase as if it were one, 2026-09-14 batch test #4/#15/#16). Matching a *new* mention against one
+ * of these, however strong the signal (exact email, exact company+person name), must not silently
+ * stack a second unverified guess on top of the first — it always asks a human to confirm.
+ * Once a human has confirmed an account (RESOLVED/MANUAL), the strong-signal methods below trust it.
+ */
+function isConfirmed(account: CustomerAccount): boolean {
+  return account.resolutionStatus !== "UNRESOLVED";
+}
+
 export function resolveEntities(
   repo: Repository,
   extraction: Extraction,
@@ -52,8 +64,10 @@ export function resolveEntities(
     if (existing?.accountId) {
       const account = repo.getAccount(existing.accountId);
       if (account) {
-        return finish("EMAIL_EXACT", 1, account, [existing], false,
-          `メールアドレス ${existing.email} が既存の担当者に一致`);
+        const pending = !isConfirmed(account);
+        return finish("EMAIL_EXACT", 1, account, [existing], pending,
+          `メールアドレス ${existing.email} が既存の担当者に一致` +
+          (pending ? "（この顧客はまだ未確定です。同じ相手か確認してください）" : ""));
       }
     }
   }
@@ -67,8 +81,10 @@ export function resolveEntities(
     if (!account) continue;
     const matched = matchPersons(repo, persons, account.id);
     if (matched.length > 0) {
-      return finish("DOMAIN_AND_NAME", 0.99, account, matched, false,
-        `ドメイン ${domain} と担当者名が既存レコードに一致`);
+      const pending = !isConfirmed(account);
+      return finish("DOMAIN_AND_NAME", 0.99, account, matched, pending,
+        `ドメイン ${domain} と担当者名が既存レコードに一致` +
+        (pending ? "（この顧客はまだ未確定です。同じ相手か確認してください）" : ""));
     }
     return finish("DOMAIN_AND_NAME", 0.97, account, [], true,
       `ドメイン ${domain} は既存顧客に一致するが担当者は未登録`,
@@ -81,8 +97,10 @@ export function resolveEntities(
     const account = exactAccounts[0]!;
     const matched = matchPersons(repo, persons, account.id);
     if (matched.length > 0) {
-      return finish("COMPANY_AND_PERSON", 0.99, account, matched, false,
-        "会社名と担当者名が既存レコードに完全一致");
+      const pending = !isConfirmed(account);
+      return finish("COMPANY_AND_PERSON", 0.99, account, matched, pending,
+        "会社名と担当者名が既存レコードに完全一致" +
+        (pending ? "（この顧客はまだ未確定です。同じ相手か確認してください）" : ""));
     }
     // 6. company only → design says review required.
     return finish("COMPANY_ONLY", 0.9, account, [], true,

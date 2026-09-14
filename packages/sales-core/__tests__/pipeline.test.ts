@@ -413,6 +413,55 @@ describe("getToday bucketing", () => {
   });
 });
 
+describe("customer resolution does not silently reuse an unconfirmed placeholder", () => {
+  // 2026-09-14 finding: a real local-LLM batch run showed the AI sometimes echoing the same
+  // bogus "company unknown" phrase (or a fabricated company/email) across unrelated captures.
+  // Because that phrase happened to exact-match an UNRESOLVED placeholder from an earlier
+  // unrelated capture, COMPANY_AND_PERSON silently merged two unrelated leads with no review.
+  it("asks again instead of merging, then trusts the account once a human confirms it", async () => {
+    const bogusCompany = "会社名不明";
+    const extraction = (personName: string) => extractionJson({
+      accounts: [{ name: bogusCompany, confidence: 0.6 }],
+      persons: [{ name: personName, company: bogusCompany, confidence: 0.6 }],
+      opportunity: { match: "NEW", confidence: 0.6 },
+    });
+    const llm = new FakeLlmProvider([extraction("鈴木"), extraction("鈴木"), extraction("鈴木")]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const actor = { userId: user.id };
+
+    // 1st capture: nothing exists yet → new UNRESOLVED placeholder + review, as always.
+    const first = await svc.capture(actor, "新規のお問い合わせ。会社名不明。担当者名は鈴木さん。");
+    expect(first.source.processingStatus).toBe("REVIEW_REQUIRED");
+    const account1Id = first.opportunity!.accountId;
+    expect(svc.repo.getAccount(account1Id)!.resolutionStatus).toBe("UNRESOLVED");
+
+    // 2nd capture: same bogus company string AND same person name → exact COMPANY_AND_PERSON
+    // match against account1. Before the fix this auto-merged with no review; now it must ask.
+    const second = await svc.capture(actor, "名刺交換した鈴木さん、部署とか肩書は聞いてない。");
+    expect(second.source.processingStatus).toBe("REVIEW_REQUIRED");
+    expect(second.opportunity!.accountId).not.toBe(account1Id); // its own fresh placeholder, not merged
+    expect(svc.listOpportunities(actor)).toHaveLength(2); // still two separate leads
+
+    // A human confirms it actually is the same customer as account1.
+    const review = second.reviews.find(r => r.type === "CUSTOMER_AMBIGUOUS")!;
+    const pick = review.optionsJson!.find(o => o.value && (o.value as { accountId?: string }).accountId === account1Id)!;
+    svc.resolveReview(actor, review.id, { optionId: pick.id });
+    expect(svc.repo.getAccount(account1Id)!.resolutionStatus).toBe("MANUAL"); // promoted, not left UNRESOLVED
+    expect(svc.listOpportunities(actor)).toHaveLength(2); // merged account, still 2 opportunities under it
+
+    // 3rd capture: same signal again, but account1 is now MANUAL → the customer match is trusted
+    // (account1 now has two open opportunities, so OPPORTUNITY_AMBIGUOUS may still ask which one —
+    // a separate, already-correct concern; what this test checks is that ENTITY_RESOLUTION itself
+    // no longer needs review).
+    const third = await svc.capture(actor, "鈴木さんからまた連絡。");
+    expect(third.opportunity?.accountId).toBe(account1Id);
+    expect(third.reviews.some(r => r.type === "CUSTOMER_AMBIGUOUS")).toBe(false);
+    const entityDecision = third.decisions.find(d => d.decisionType === "ENTITY_RESOLUTION");
+    expect(entityDecision?.status).toBe("AUTO_APPLIED");
+  });
+});
+
 describe("customer contact details", () => {
   it("saves company address / phone / URL, and adds and edits customer contacts", () => {
     const svc = makeService(new FakeLlmProvider([]), NOW);

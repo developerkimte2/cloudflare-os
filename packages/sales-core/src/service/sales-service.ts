@@ -910,6 +910,12 @@ export class SalesService {
       if (!target) throw new NotFoundError("顧客");
       this.repo.reassignAccount(placeholder.id, target.id);
       this.repo.deleteAccount(placeholder.id);
+      // A human just vouched that this new mention is the same customer as `target` — that
+      // confirmation applies to `target` itself too, not only to its persons, so later mentions
+      // that match it (entity-resolution.ts's isConfirmed) stop asking again for no reason.
+      if (target.resolutionStatus === "UNRESOLVED") {
+        this.repo.updateAccount({ ...target, resolutionStatus: "MANUAL", updatedAt: now });
+      }
       for (const p of this.repo.listPersonsForAccount(target.id)) {
         if (p.resolutionStatus === "UNRESOLVED") this.repo.updatePerson({ ...p, resolutionStatus: "MANUAL", updatedAt: now });
       }

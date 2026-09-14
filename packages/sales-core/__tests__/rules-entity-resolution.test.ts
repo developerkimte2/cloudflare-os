@@ -68,6 +68,23 @@ describe("resolveEntities", () => {
     expect(res.persons.map(p => p.id)).toEqual([person.id]);
   });
 
+  it("EMAIL_EXACT: a matching email against an UNRESOLVED (unconfirmed) account still requires review", () => {
+    // 2026-09-14 finding: an UNRESOLVED account's own identity is itself an unconfirmed AI guess —
+    // matching a new mention to one via email must not silently stack a second guess on top.
+    const account = makeAccount({ resolutionStatus: "UNRESOLVED" });
+    repo.insertAccount(account);
+    const person = makePerson(account.id, { email: "yamada@abc.co.jp", resolutionStatus: "UNRESOLVED" });
+    repo.insertPerson(person);
+
+    const x = baseExtraction({ persons: [{ name: "山田", email: "yamada@abc.co.jp" }] });
+    const res = resolveEntities(repo, x, DEFAULT_CONFIG);
+    expect(res.method).toBe("EMAIL_EXACT");
+    expect(res.account).toBeUndefined();
+    expect(res.needsReview).toBe(true);
+    expect(res.candidates.map(c => c.id)).toEqual([account.id]);
+    expect(res.reason).toContain("未確定");
+  });
+
   it("DOMAIN_AND_NAME: matching domain and person name resolves without review", () => {
     const account = makeAccount({ primaryDomain: "abc.co.jp" });
     repo.insertAccount(account);
@@ -79,6 +96,19 @@ describe("resolveEntities", () => {
     expect(res.method).toBe("DOMAIN_AND_NAME");
     expect(res.account?.id).toBe(account.id);
     expect(res.needsReview).toBe(false);
+  });
+
+  it("DOMAIN_AND_NAME: matching domain and person against an UNRESOLVED account still requires review", () => {
+    const account = makeAccount({ primaryDomain: "abc.co.jp", resolutionStatus: "UNRESOLVED" });
+    repo.insertAccount(account);
+    const person = makePerson(account.id, { displayName: "山田太郎", resolutionStatus: "UNRESOLVED" });
+    repo.insertPerson(person);
+
+    const x = baseExtraction({ persons: [{ name: "山田太郎", email: "yamada@abc.co.jp" }] });
+    const res = resolveEntities(repo, x, DEFAULT_CONFIG);
+    expect(res.method).toBe("DOMAIN_AND_NAME");
+    expect(res.account).toBeUndefined();
+    expect(res.needsReview).toBe(true);
   });
 
   it("DOMAIN_AND_NAME: matching domain but unknown person still needs review", () => {
@@ -104,6 +134,20 @@ describe("resolveEntities", () => {
     expect(res.method).toBe("COMPANY_AND_PERSON");
     expect(res.account?.id).toBe(account.id);
     expect(res.needsReview).toBe(false);
+  });
+
+  it("COMPANY_AND_PERSON: exact match against an UNRESOLVED account still requires review", () => {
+    const account = makeAccount({ displayName: "ABC株式会社", resolutionStatus: "UNRESOLVED" });
+    repo.insertAccount(account);
+    const person = makePerson(account.id, { displayName: "山田", resolutionStatus: "UNRESOLVED" });
+    repo.insertPerson(person);
+
+    const x = baseExtraction({ accounts: [{ name: "ABC株式会社" }], persons: [{ name: "山田", company: "ABC株式会社" }] });
+    const res = resolveEntities(repo, x, DEFAULT_CONFIG);
+    expect(res.method).toBe("COMPANY_AND_PERSON");
+    expect(res.account).toBeUndefined();
+    expect(res.needsReview).toBe(true);
+    expect(res.candidates.map(c => c.id)).toEqual([account.id]);
   });
 
   it("COMPANY_ONLY: exact company match with no matching person requires review", () => {
