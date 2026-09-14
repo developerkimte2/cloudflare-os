@@ -1,48 +1,14 @@
 /**
  * Deterministic support for the capture box's "ask a question" mode (「＊＊の状況どうなっている？」):
- * recognizing that pasted text is a question about existing opportunities rather than something to
- * capture, and picking which opportunities are relevant enough to hand to the LLM as context. No
+ * picking which opportunities a question is relevant enough to hand to the LLM as context. No
  * LLM/DB calls happen here — `SalesService.askQuestion` does the LLM call; this module only decides
- * *whether* and *what* to send it, the same split as `split.ts` for capture batching.
+ * *what* to send it.
+ *
+ * *Whether* text is a question is no longer decided here: the capture box has a separate 検索 button
+ * and the rep chooses. A keyword heuristic used to guess (「状況」「進捗」…) and got it wrong both ways
+ * on real input (2026-09-14), and no keyword list can enumerate every phrasing.
  */
 import { normalizeName } from "../domain/util.js";
-
-const QUESTION_KEYWORDS = ["状況", "どうなっている", "どうなってる", "どうなった", "進捗", "ステータス"];
-
-/** Above this length, treat the text as a capture even if it happens to contain a question mark. */
-const MAX_QUESTION_LENGTH = 100;
-
-/**
- * A request directed at the assistant ("ABC社の情報を教えてほしい"/"...おしえて") rather than a report of a
- * customer interaction -- without this, it falls through to a capture and the AI, seeing a real
- * company name in the text, creates a phantom opportunity for it (2026-09-14 finding). Both the
- * kanji and hiragana spellings are listed since either is common in casual typed input.
- *
- * Kept separate from QUESTION_KEYWORDS with a *much* shorter length cap: unlike "状況"/"進捗", these
- * are common enough to show up as someone else's reported words inside a legitimate long memo
- * ("...契約書のフォーマットを教えてください、とのこと。" -- the customer's request, quoted in an email
- * recap) -- confirmed against the 2026-09-14 capture_test_samples.csv batch, where a naive
- * unbounded match on "教えて" wrongly reclassified exactly that email as a question and dropped it.
- */
-const REQUEST_KEYWORDS = ["教えて", "おしえて", "知りたい", "しりたい"];
-const MAX_REQUEST_QUESTION_LENGTH = 40;
-
-/**
- * True when `text` reads as a short question about a case ("ABC社の状況どうなっている？") rather than
- * something to capture (a pasted email, meeting note, or daily report). Deliberately conservative:
- * requires a question mark or one of a small set of status-asking phrases, and a short length.
- * Anything longer, or without either signal, stays a capture — a false positive here would silently
- * drop a real capture instead of extracting it.
- */
-export function looksLikeQuestion(text: string): boolean {
-  const t = text.trim();
-  if (!t) return false;
-  if (t.length <= MAX_QUESTION_LENGTH) {
-    if (t.endsWith("?") || t.endsWith("？")) return true;
-    if (QUESTION_KEYWORDS.some((k) => t.includes(k))) return true;
-  }
-  return t.length <= MAX_REQUEST_QUESTION_LENGTH && REQUEST_KEYWORDS.some((k) => t.includes(k));
-}
 
 export interface AskableOpportunity {
   id: string;

@@ -220,10 +220,10 @@ describe("customer / opportunity resolution scenarios", () => {
   });
 
   // 2026-09-14 finding: "山田商事の情報を教えてほしい" is a request to the assistant, not a record of a
-  // customer interaction -- even though it names a real company. Defense-in-depth alongside
-  // looksLikeQuestion's client-side keyword check (extract.v3's rule 10): not_sales_related short-
-  // circuits before entity resolution runs, so a stray account_candidate here must still create
-  // nothing.
+  // customer interaction -- even though it names a real company. The capture box now has a separate
+  // 検索 button so the rep chooses; this is the safety net for a question sent as a capture by
+  // mistake (extract.v3's rule 10): not_sales_related short-circuits before entity resolution runs,
+  // so a stray account_candidate here must still create nothing.
   it("a request to the assistant creates no account/opportunity even if it names one", async () => {
     const llm = new FakeLlmProvider([extractionJson({
       not_sales_related: true,
