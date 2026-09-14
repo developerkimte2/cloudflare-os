@@ -245,6 +245,39 @@ describe("buildAnswerRequest", () => {
     expect(req.user).toContain("状態: 受注");
   });
 
+  // 2026-09-15: a rep read back "JPY 500000" with no owner or contact and couldn't tell who the case
+  // was with. The prompt keeps data "as-is", so the readable form must already be in the dump.
+  it("hands the model the owner, the customer contacts and a readable amount", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", matchedByName: true,
+      opportunities: [{ ...opportunity, contactNames: ["山田", "佐藤"], expectedAmount: 500000 }],
+    });
+    expect(req.user).toContain("社内担当: 太郎");
+    expect(req.user).toContain("窓口: 山田、佐藤");
+    expect(req.user).toContain("見込金額: 500,000円");
+    expect(req.user).not.toContain("JPY 500000");
+  });
+
+  it("marks a missing contact and a non-JPY amount explicitly", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", matchedByName: true,
+      opportunities: [{ ...opportunity, expectedAmount: 1000, currency: "USD" }],
+    });
+    expect(req.user).toContain("窓口: (未設定)");
+    expect(req.user).toContain("見込金額: 1,000 USD");
+  });
+
+  it("asks for one 項目名: 値 line per field so the answer scans at a glance", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
+    });
+    expect(req.system).toContain("1 項目 1 行");
+    expect(req.system).toContain("「窓口」「社内担当」");
+  });
+
   it("shows '(なし)' when there are no opportunities to answer from", () => {
     const req = buildAnswerRequest({
       referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",

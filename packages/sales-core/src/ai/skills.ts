@@ -14,7 +14,7 @@ import type { LlmRequest } from "./provider.js";
 
 export const EXTRACTION_PROMPT_VERSION = "extract.v3";
 export const CONTEXT_PROMPT_VERSION = "context.v1";
-export const ANSWER_PROMPT_VERSION = "answer.v4";
+export const ANSWER_PROMPT_VERSION = "answer.v5";
 
 // Japanese labels for the answer prompt's opportunity dump (FB_20260908: no raw English enums in
 // front of users). buildAnswerRequest's instruction to keep data "as-is" is about not letting the
@@ -41,6 +41,13 @@ function statusLineJa(lifecycleState: LifecycleState, operationalState: Operatio
     case "CLOSED": return "終了";
     default: return OPEN_STATUS_LINE_JA[operationalState];
   }
+}
+
+// The answer prompt tells the model to keep amounts "as-is", so the readable form has to be in the
+// data: "JPY 500000" read back verbatim is exactly the unreadable output a rep complained about.
+function formatAmountJa(amount: number, currency: string | undefined): string {
+  const digits = amount.toLocaleString("ja-JP");
+  return !currency || currency === "JPY" ? `${digits}円` : `${digits} ${currency}`;
 }
 
 const UNTRUSTED_RULE =
@@ -255,8 +262,11 @@ export function buildAnswerRequest(input: AnswerInput): LlmRequest {
     "2. 「質問に一致する案件名は見つからなかった」と書かれている場合は、まずその旨を一文で正直に伝えてから、" +
       "参考情報として直近の案件に触れる。案件名が一致した場合にのみ、その案件について直接答える。",
     "3. 複数の案件が該当する場合は、案件ごとに簡潔に触れる。",
-    "4. 金額・状態などはデータの表記をそのまま使う (単位を作り変えない)。日時はデータに書かれている表記をそのまま使う (ISO 8601 形式などへの変換や再計算はしない)。",
-    "5. 出力は自然な日本語の文章のみ。JSON や説明的な前置きは付けない。長くても数段落程度に収める。",
+    "4. 金額・状態・担当者名などはデータの表記をそのまま使う (単位や桁区切りを作り変えない)。日時はデータに書かれている表記をそのまま使う (ISO 8601 形式などへの変換や再計算はしない)。",
+    "5. 出力は日本語のプレーンテキストのみ (JSON・Markdown 記法・説明的な前置きは付けない)。読み手は画面を一瞥する営業担当者なので、" +
+      "案件ごとに次の形で書く: 1 行目に「顧客名 / 案件名」、続けて「窓口」「社内担当」「状況」「リスク」「次アクション」「見込金額」「最終活動」を" +
+      "1 項目 1 行で「項目名: 値」の形に並べ、最後に 1〜2 文で要点をまとめる。データに無い項目は「(未設定)」「(記録なし)」のように" +
+      "データの表記のまま書き、省略も推測もしない。案件が複数ある場合は案件ごとにこのブロックを繰り返し、空行で区切る。",
     "",
     UNTRUSTED_RULE.replace("営業現場から投げ込まれた", "過去に営業現場から投げ込まれ、AI が要約した"),
   ].join("\n");
@@ -266,11 +276,13 @@ export function buildAnswerRequest(input: AnswerInput): LlmRequest {
     : input.opportunities.map(o => [
         `- id=${o.id}`,
         `  顧客: ${o.accountName} / 案件: ${o.title}`,
+        `  窓口: ${o.contactNames.length > 0 ? o.contactNames.join("、") : "(未設定)"}`,
+        `  社内担当: ${o.ownerName}`,
         `  状態: ${statusLineJa(o.lifecycleState, o.operationalState)}${o.phaseLabel ? ` (${o.phaseLabel})` : ""}`,
         `  リスク: ${RISK_LABEL_JA[o.riskLevel]}${o.riskReason ? ` - ${o.riskReason}` : ""}`,
         `  現在状況: ${o.currentSituation ?? "(記録なし)"}`,
         `  次アクション: ${o.nextAction ? `${o.nextAction.title}${o.nextAction.dueAt ? ` (期限 ${formatDateTimeJa(o.nextAction.dueAt, input.timezone)})` : ""}` : "(なし)"}`,
-        `  見込金額: ${o.expectedAmount != null ? `${o.currency ?? "JPY"} ${o.expectedAmount}` : "(未設定)"}`,
+        `  見込金額: ${o.expectedAmount != null ? formatAmountJa(o.expectedAmount, o.currency) : "(未設定)"}`,
         `  最終活動: ${o.lastMeaningfulActivityAt ? formatDateTimeJa(o.lastMeaningfulActivityAt, input.timezone) : "(記録なし)"}`,
       ].join("\n")).join("\n\n");
 

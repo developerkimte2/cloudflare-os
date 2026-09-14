@@ -1010,9 +1010,9 @@ describe("askQuestion (capture box search mode)", () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]).toEqual(["question.asked",
-      { kind: "matched", candidates: 1, promptVersion: "answer.v4" }]);
+      { kind: "matched", candidates: 1, promptVersion: "answer.v5" }]);
     expect(events[1]).toEqual(["question.answered",
-      { status: "ok", model: "fake-model", promptVersion: "answer.v4", outputTokens: undefined }]);
+      { status: "ok", model: "fake-model", promptVersion: "answer.v5", outputTokens: undefined }]);
     const serialized = JSON.stringify(events);
     expect(serialized).not.toContain("ABC株式会社の状況どうなっている");
     expect(serialized).not.toContain("見積送付待ち");
