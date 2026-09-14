@@ -1,5 +1,6 @@
 import {
   Calendar,
+  CaretLeft,
   Gear,
   ListChecks,
   Question,
@@ -35,7 +36,29 @@ export default function App({ api, openPrompt }: Props) {
   const [who, setWho] = useState<WhoAmI>();
   const [whoError, setWhoError] = useState<string>();
   const [route, setRoute] = useState<Route>({ kind: "today" });
+  // In-app history. The iframe has no URL of its own, so the browser's back button leaves Sales OS
+  // entirely; the back bar walks this stack instead.
+  const [history, setHistory] = useState<Route[]>([]);
   const [openReviewCount, setOpenReviewCount] = useState(0);
+
+  const navigate = useCallback(
+    (next: Route) => {
+      if (sameRoute(next, route)) return;
+      setHistory((stack) => [...stack, route].slice(-50));
+      setRoute(next);
+    },
+    [route],
+  );
+
+  const goBack = useCallback(() => {
+    const previous = history[history.length - 1];
+    if (previous) {
+      setHistory(history.slice(0, -1));
+      setRoute(previous);
+    } else {
+      setRoute(route.kind === "opportunity" ? { kind: "opportunities" } : { kind: "today" });
+    }
+  }, [history, route]);
 
   const loadWhoAmI = useCallback(() => {
     setWhoError(undefined);
@@ -60,9 +83,7 @@ export default function App({ api, openPrompt }: Props) {
     if (who?.user) refreshReviewCount();
   }, [who?.user, refreshReviewCount]);
 
-  const openOpportunity = useCallback((id: string) => {
-    setRoute({ kind: "opportunity", id });
-  }, []);
+  const openOpportunity = useCallback((id: string) => navigate({ kind: "opportunity", id }), [navigate]);
 
   if (whoError) {
     return (
@@ -114,13 +135,23 @@ export default function App({ api, openPrompt }: Props) {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           route={route}
-          setRoute={setRoute}
+          setRoute={navigate}
           canManage={canManage}
           canAdminister={canAdminister}
           openReviewCount={openReviewCount}
           userDisplayName={user.displayName}
         />
         <main className="min-w-0 flex-1 overflow-y-auto">
+          {(history.length > 0 || route.kind !== "today") && (
+            <BackBar
+              label={
+                history.length > 0
+                  ? ROUTE_LABEL[history[history.length - 1]!.kind]
+                  : ROUTE_LABEL[route.kind === "opportunity" ? "opportunities" : "today"]
+              }
+              onBack={goBack}
+            />
+          )}
           {route.kind === "today" && (
             <TodayPage
               api={api}
@@ -140,7 +171,6 @@ export default function App({ api, openPrompt }: Props) {
               api={api}
               user={user}
               opportunityId={route.id}
-              onBack={() => setRoute({ kind: "opportunities" })}
             />
           )}
           {route.kind === "review" && (
@@ -152,6 +182,34 @@ export default function App({ api, openPrompt }: Props) {
           {route.kind === "settings" && canAdminister && <SettingsPage api={api} who={who} />}
         </main>
       </div>
+    </div>
+  );
+}
+
+const ROUTE_LABEL: Record<Route["kind"], string> = {
+  today: "今日",
+  opportunities: "案件",
+  opportunity: "案件詳細",
+  review: "確認",
+  manager: "チーム",
+  settings: "設定",
+};
+
+function sameRoute(a: Route, b: Route): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind !== "opportunity" || (b.kind === "opportunity" && a.id === b.id);
+}
+
+function BackBar({ label, onBack }: { label: string; onBack: () => void }) {
+  return (
+    <div className="sticky top-0 z-10 border-b border-kumo-line bg-kumo-base px-6 py-2">
+      <button
+        type="button"
+        onClick={onBack}
+        className="press inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-sm text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default"
+      >
+        <CaretLeft size={14} /> 戻る（{label}）
+      </button>
     </div>
   );
 }

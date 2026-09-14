@@ -1,6 +1,5 @@
 import type { RpcStub } from "capnweb";
 import { useKumoToastManager } from "@cloudflare/kumo";
-import { CaretLeft } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import type {
   AIContextSnapshot,
@@ -50,12 +49,10 @@ export default function OpportunityDetailPage({
   api,
   user,
   opportunityId,
-  onBack,
 }: {
   api: RpcStub<SalesManagementApi>;
   user: UserDto;
   opportunityId: string;
-  onBack: () => void;
 }) {
   const timezone = user.timezone || "Asia/Tokyo";
   const runAction = useApiAction();
@@ -67,11 +64,11 @@ export default function OpportunityDetailPage({
   const [recomputing, setRecomputing] = useState(false);
 
   if (loading && !data) {
-    return <PageShell onBack={onBack}>読み込み中…</PageShell>;
+    return <PageShell>読み込み中…</PageShell>;
   }
   if (error || !data) {
     return (
-      <PageShell onBack={onBack}>
+      <PageShell>
         <p className="text-sm text-kumo-danger">読み込みに失敗しました。</p>
         {error && <p className="mt-1 text-xs text-kumo-subtle">{error}</p>}
         <button type="button" onClick={reload} className="mt-2 text-sm text-kumo-link hover:underline">
@@ -128,14 +125,6 @@ export default function OpportunityDetailPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-kumo-subtle hover:text-kumo-default"
-      >
-        <CaretLeft size={14} /> 案件一覧へ
-      </button>
-
       <OpportunityHeader opportunity={data} users={users ?? []} timezone={timezone} onSave={savePatch} />
 
       <ContextSection context={data.context} timezone={timezone} onRecompute={recompute} recomputing={recomputing} />
@@ -180,16 +169,9 @@ export default function OpportunityDetailPage({
   );
 }
 
-function PageShell({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
+function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-kumo-subtle hover:text-kumo-default"
-      >
-        <CaretLeft size={14} /> 案件一覧へ
-      </button>
       <p className="text-sm text-kumo-subtle">{children}</p>
     </div>
   );
