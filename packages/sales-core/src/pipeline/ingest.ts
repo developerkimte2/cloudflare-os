@@ -37,6 +37,8 @@ export interface CaptureInput {
   /** When the user said when it happened (ISO). */
   occurredAt?: string;
   externalId?: string;
+  /** Pins this memo to a specific opportunity — see CaptureOptions.opportunityId. */
+  opportunityId?: string;
 }
 
 export interface CaptureReceipt {
@@ -58,7 +60,8 @@ export async function captureText(ctx: CoreContext, input: CaptureInput): Promis
     throw new TypeError("capture: occurredAt must be an ISO 8601 date-time");
   }
 
-  const hash = await sha256Hex(`${input.userId}\n${canonicalizeText(text)}`);
+  // Pinning the same text to a different opportunity is a distinct capture, not a duplicate.
+  const hash = await sha256Hex(`${input.userId}\n${input.opportunityId ?? ""}\n${canonicalizeText(text)}`);
   const existing = ctx.repo.findSourceByHash(hash);
   if (existing) return { sourceId: existing.id, duplicate: true, status: existing.processingStatus };
 
@@ -72,6 +75,7 @@ export async function captureText(ctx: CoreContext, input: CaptureInput): Promis
     occurredAt: input.occurredAt ? new Date(input.occurredAt).toISOString() : undefined,
     receivedAt: nowIso(ctx.clock),
     processingStatus: "RECEIVED",
+    targetOpportunityId: input.opportunityId,
   };
   ctx.repo.transaction(() => {
     ctx.repo.insertSource(source);
@@ -227,12 +231,20 @@ function applyExtraction(
     return r;
   };
 
+  // A source normally reaches applyExtraction once, but a MEMO_TARGET review's "reprocess once
+  // pinned" path runs it a second time on the same source — source_applications is keyed by
+  // source_id, so the second pass must replace the (empty) row the first pass already inserted.
+  const saveApplication = () => {
+    if (ctx.repo.getApplication(source.id)) ctx.repo.updateApplication(app);
+    else ctx.repo.insertApplication(app);
+  };
+
   // --- Not sales related: record the decision and stop (no placeholder customers for chit-chat).
   if (x.not_sales_related) {
     decide("ENTITY_RESOLUTION", "source_document", source.id, { not_sales_related: true }, null,
       x.activity.confidence, "AUTO_APPLIED", "営業活動に関係しない入力と判断");
     ctx.repo.updateSource({ ...source, processingStatus: "PROCESSED", processedAt: now, processingError: undefined });
-    ctx.repo.insertApplication(app);
+    saveApplication();
     audit(ctx, { actorType: "AI", action: "SOURCE_PROCESSED", entityType: "source_document",
       entityId: source.id, after: { notSalesRelated: true }, sourceIds: [source.id] });
     return { sourceId: source.id, status: "PROCESSED", reviewIds: [], nextActionIds: [],
@@ -248,12 +260,69 @@ function applyExtraction(
   let opportunityBefore: Opportunity | undefined;
   let account: CustomerAccount | undefined;
 
+  // MEMO_TARGET: a person was mentioned but there is no company signal at all (including a name
+  // looksLikeCompanyName rejected) — ask which deal this belongs to instead of spinning up another
+  // "(顧客未特定)" placeholder deal (2026-09-14 finding: 13 of 31 real captures did exactly that).
+  // Gated on a person being mentioned specifically: a wholly uninformative memo ("テキストだけ投げ込む")
+  // still gets its usual placeholder, unchanged — this only intercepts the reproducible pattern.
+  const noCompanySignal = !resolution.account && !resolution.mentionedCompanyName && resolution.candidates.length === 0;
+  const personMentioned = x.entities.person_candidates.length > 0;
   const matchedExisting = x.opportunity.match === "EXISTING" &&
     x.opportunity.existing_opportunity_id && visibleIds.has(x.opportunity.existing_opportunity_id) &&
     x.opportunity.confidence >= ctx.config.opportunityAutoConfidence
     ? ctx.repo.getOpportunity(x.opportunity.existing_opportunity_id) : undefined;
 
-  if (matchedExisting) {
+  if (source.targetOpportunityId) {
+    // Pinned capture (that opportunity's own capture box, or an already-resolved MEMO_TARGET
+    // review): skip customer/deal resolution entirely, the destination is already decided.
+    const target = ctx.repo.getOpportunity(source.targetOpportunityId);
+    const targetAccount = target ? ctx.repo.getAccount(target.accountId) : undefined;
+    if (!target || !targetAccount) {
+      throw new Error(`applyExtraction: pinned opportunity ${source.targetOpportunityId} not found`);
+    }
+    opportunity = target;
+    opportunityBefore = { ...target };
+    account = targetAccount;
+    decide("OPPORTUNITY_RESOLUTION", "opportunity", target.id,
+      { match: "PINNED", id: target.id }, { opportunityId: target.id },
+      1, "AUTO_APPLIED", "案件画面からの取り込み (宛先指定)");
+    for (const p of resolution.unmatchedPersons) {
+      if (!p.name || p.confidence < 0.5) continue;
+      const person: CustomerPerson = {
+        id: newId(), accountId: account.id, displayName: p.name,
+        normalizedName: normalizeName(p.name),
+        email: p.email ? normalizeEmail(p.email) : undefined,
+        title: p.title ?? undefined,
+        resolutionStatus: account.resolutionStatus === "UNRESOLVED" ? "UNRESOLVED" : "MANUAL",
+        createdAt: now, updatedAt: now,
+      };
+      ctx.repo.insertPerson(person);
+      app.createdPersonIds.push(person.id);
+    }
+  } else if (noCompanySignal && personMentioned) {
+    decide("ENTITY_RESOLUTION", "source_document", source.id,
+      { method: resolution.method, personNames: x.entities.person_candidates.map(p => p.name) }, null,
+      0, "REVIEW_REQUIRED", "担当者は分かるが顧客の会社が特定できないため宛先を確認", x.entities);
+    const excerpt = memoExcerpt(source.rawText);
+    review({
+      type: "MEMO_TARGET",
+      question: `メモ「${excerpt}」はどの案件の話ですか？`,
+      options: [
+        ...visible.slice(0, 5).map(o => ({
+          id: `opportunity:${o.id}`, label: `${o.accountName} / ${o.title}`, value: { opportunityId: o.id },
+        })),
+        { id: "memo", label: "案件に紐付けない（メモとして残す）", value: { memo: true } },
+      ],
+    }, "source_document", source.id);
+    ctx.repo.updateSource({ ...source, processingStatus: "REVIEW_REQUIRED" });
+    saveApplication();
+    audit(ctx, { actorType: "AI", action: "SOURCE_RECEIVED", entityType: "source_document",
+      entityId: source.id, after: { memoTarget: true }, sourceIds: [source.id] });
+    return {
+      sourceId: source.id, status: "REVIEW_REQUIRED", reviewIds: app.createdReviewIds,
+      nextActionIds: [], commitmentIds: [], model: meta.modelName, repairs: meta.repairs,
+    };
+  } else if (matchedExisting) {
     opportunity = matchedExisting;
     opportunityBefore = { ...matchedExisting };
     account = ctx.repo.getAccount(matchedExisting.accountId);
@@ -542,7 +611,7 @@ function applyExtraction(
   // --- 8. Source bookkeeping ----------------------------------------------------------------------
   const status: SourceDocument["processingStatus"] = reviews.length ? "REVIEW_REQUIRED" : "PROCESSED";
   ctx.repo.updateSource({ ...source, processingStatus: status, processedAt: now, processingError: undefined });
-  ctx.repo.insertApplication(app);
+  saveApplication();
   audit(ctx, { actorType: "AI", action: "SOURCE_PROCESSED", entityType: "source_document",
     entityId: source.id, after: { status, opportunityId: opportunity.id, activityId: activity.id,
       reviews: reviews.length, model: meta.modelName, repairs: meta.repairs }, sourceIds: [source.id] });

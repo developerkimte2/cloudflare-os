@@ -36,6 +36,12 @@ export interface CaptureOptions {
   sourceType?: SourceType;
   /** ISO 8601 date-time of when the reported activity happened, if the user said so. */
   occurredAt?: string;
+  /**
+   * Pins this memo to a specific opportunity (e.g. captured from that opportunity's own page):
+   * customer/deal resolution is skipped entirely and the activity attaches there directly. The
+   * caller must be able to see the opportunity.
+   */
+  opportunityId?: string;
 }
 
 /** Result of `SalesService.askQuestion` (「＊＊の状況どうなっている？」). */

@@ -149,7 +149,9 @@ export interface ReviewItem {
   id: string;
   type:
     | "CUSTOMER_AMBIGUOUS" | "OPPORTUNITY_AMBIGUOUS" | "DATE_AMBIGUOUS" | "AMOUNT_AMBIGUOUS"
-    | "STATE_AMBIGUOUS" | "HIGH_RISK_ACTION" | "OTHER";
+    | "STATE_AMBIGUOUS" | "HIGH_RISK_ACTION"
+    /** A person was mentioned but no company at all — pick which deal this memo belongs to. */
+    | "MEMO_TARGET" | "OTHER";
   question: string;
   optionsJson?: { id: string; label: string; value?: unknown }[];
   /** Title of the opportunity or customer the question is about. */
@@ -173,6 +175,8 @@ export interface CaptureOptions {
   sourceType?: SourceDocument["sourceType"];
   /** ISO 8601 date-time of when the reported activity happened, if the user said so. */
   occurredAt?: string;
+  /** Pins this memo to a specific opportunity: skips customer/deal matching and attaches it there directly. */
+  opportunityId?: string;
 }
 
 export interface CaptureResult {

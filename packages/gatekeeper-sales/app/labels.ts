@@ -97,6 +97,7 @@ export const REVIEW_TYPE_LABEL: Record<ReviewItemType, string> = {
   AMOUNT_AMBIGUOUS: "金額の確認",
   STATE_AMBIGUOUS: "状態の確認",
   HIGH_RISK_ACTION: "重要な確認",
+  MEMO_TARGET: "宛先の確認",
   OTHER: "その他の確認",
 };
 
@@ -189,6 +190,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   REVIEW_RESOLVED: "確認を解決",
   SOURCE_DISCARDED: "取込を破棄",
   SOURCE_FAILED: "取込が失敗",
+  SOURCE_KEPT_AS_MEMO: "メモとして保存（案件に紐付けなし）",
   SOURCE_PROCESSED: "取込を処理",
   SOURCE_RECEIVED: "取込を受付",
   SOURCE_REVERTED: "取込を取消",

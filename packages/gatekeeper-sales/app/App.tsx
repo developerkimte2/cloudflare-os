@@ -179,8 +179,10 @@ export default function App({ api, openPrompt }: Props) {
               key={route.id}
               api={api}
               user={user}
+              ai={who.ai}
               opportunityId={route.id}
               onOpenCustomer={openCustomer}
+              onOpenOpportunity={openOpportunity}
             />
           )}
           {route.kind === "customer" && (

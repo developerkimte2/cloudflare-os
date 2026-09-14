@@ -328,6 +328,12 @@ UPDATE opportunities SET contact_person_ids = (
 );
 `,
   },
+  {
+    id: "0006_source_document_target_opportunity",
+    sql: `
+ALTER TABLE source_documents ADD COLUMN target_opportunity_id TEXT;
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

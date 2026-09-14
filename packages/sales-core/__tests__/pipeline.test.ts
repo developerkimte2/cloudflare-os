@@ -102,7 +102,7 @@ describe("Phase 0 acceptance criteria", () => {
     const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
     const result = await svc.capture({ userId: user.id }, "新規株式会社さんと話した");
     const review = result.reviews[0]!;
-    svc.resolveReview({ userId: user.id }, review.id, { optionId: "new" });
+    await svc.resolveReview({ userId: user.id }, review.id, { optionId: "new" });
     expect(svc.getCapture({ userId: user.id }, result.source.id).source.processingStatus).toBe("PROCESSED");
 
     svc.revertCapture({ userId: user.id }, result.source.id);
@@ -196,7 +196,7 @@ describe("customer / opportunity resolution scenarios", () => {
 
     const review = result.reviews[0]!;
     const chooseOption = review.optionsJson!.find(o => o.id === `opportunity:${oppA.id}`)!;
-    svc.resolveReview({ userId: user.id }, review.id, { optionId: chooseOption.id });
+    await svc.resolveReview({ userId: user.id }, review.id, { optionId: chooseOption.id });
 
     expect(svc.repo.getOpportunity(freshOppId)).toBeUndefined();
     expect(svc.listOpportunities({ userId: user.id })).toHaveLength(2);
@@ -243,7 +243,7 @@ describe("state and date review flows", () => {
     expect(review).toBeDefined();
     expect(svc.repo.getOpportunity(opp.id)!.lifecycleState).toBe("OPEN");
 
-    svc.resolveReview({ userId: user.id }, review.id, { optionId: "confirm" });
+    await svc.resolveReview({ userId: user.id }, review.id, { optionId: "confirm" });
     expect(svc.repo.getOpportunity(opp.id)!.lifecycleState).toBe("WON");
   });
 
@@ -262,7 +262,7 @@ describe("state and date review flows", () => {
     expect(review).toBeDefined();
     const setOption = review.optionsJson!.find(o => o.id === "set")!;
 
-    svc.resolveReview({ userId: user.id }, review.id, {
+    await svc.resolveReview({ userId: user.id }, review.id, {
       optionId: setOption.id, input: { dueAt: "2026-09-19T18:00:00+09:00" },
     });
     const commitment = svc.repo.getCommitment(result.commitments[0]!.id)!;
@@ -483,11 +483,47 @@ describe("next-action suggestions (below nextActionAutoConfidence)", () => {
   });
 });
 
-describe("CUSTOMER_AMBIGUOUS question wording quotes the memo, not the AI's guessed name", () => {
-  it("company-less mention: quotes the memo and does not assert a name as the customer", async () => {
+describe("pinned capture (CaptureOptions.opportunityId)", () => {
+  it("skips customer/deal resolution entirely and attaches the activity to that opportunity", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      // Deliberately mentions an unrelated company — pinning must ignore it, not create a second
+      // opportunity or ask which customer this is.
+      accounts: [{ name: "全然別の会社", confidence: 0.9 }],
+      opportunity: { match: "NEW", confidence: 0.9 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const actor = { userId: user.id };
+    const account = makeAccount(svc.repo);
+    const opp = makeOpportunity(svc.repo, account.id, user.id, { title: "既存案件" });
+
+    const result = await svc.capture(actor, "来週訪問予定。詳細は未定。", { opportunityId: opp.id });
+    expect(result.source.processingStatus).not.toBe("REVIEW_REQUIRED");
+    expect(result.opportunity?.id).toBe(opp.id);
+    expect(result.activity?.opportunityId).toBe(opp.id);
+    expect(result.reviews.some(r => r.type === "CUSTOMER_AMBIGUOUS" || r.type === "MEMO_TARGET")).toBe(false);
+    expect(svc.listOpportunities(actor)).toHaveLength(1); // no second opportunity created
+    const pinDecision = result.decisions.find(d => d.decisionType === "OPPORTUNITY_RESOLUTION")!;
+    expect(pinDecision.reasoningSummary).toContain("宛先指定");
+  });
+
+  it("rejects an opportunityId the caller cannot see", async () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const owner = makeUser(svc.repo, "SALES");
+    const outsider = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    const opp = makeOpportunity(svc.repo, account.id, owner.id);
+
+    await expect(svc.capture({ userId: outsider.id }, "メモ", { opportunityId: opp.id })).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("MEMO_TARGET: a person is mentioned but there is no company signal at all", () => {
+  it("no opportunity/customer placeholder is created; the review asks which deal instead", async () => {
     const llm = new FakeLlmProvider([extractionJson({
       // The extractor did the 2026-09-14-observed thing: echoed a "company unknown" phrase back
-      // as the company. looksLikeCompanyName strips it before it can appear in the question.
+      // as the company. looksLikeCompanyName strips it before resolution ever sees it, so this
+      // capture ends up with a person but no company signal at all — exactly MEMO_TARGET's trigger.
       accounts: [{ name: "会社名は聞きそびれた", confidence: 0.6 }],
       persons: [{ name: "鈴木", confidence: 0.6 }],
       opportunity: { match: "NEW", confidence: 0.6 },
@@ -497,13 +533,94 @@ describe("CUSTOMER_AMBIGUOUS question wording quotes the memo, not the AI's gues
 
     const text = "新規のお問い合わせ。会社名は聞きそびれた。担当者名は鈴木さん。";
     const result = await svc.capture({ userId: user.id }, text);
-    const review = result.reviews.find(r => r.type === "CUSTOMER_AMBIGUOUS")!;
+    expect(result.source.processingStatus).toBe("REVIEW_REQUIRED");
+    expect(result.opportunity).toBeUndefined();
+    expect(result.activity).toBeUndefined();
+    expect(svc.listOpportunities({ userId: user.id })).toHaveLength(0);
+
+    const review = result.reviews.find(r => r.type === "MEMO_TARGET")!;
+    expect(review).toBeDefined();
     // The memo itself is quoted verbatim (so it naturally still contains the rep's own words) — what
     // must NOT happen is the system asserting that phrase as a determined company name.
-    expect(review.question).toBe(`メモ「${text}」の顧客が分かりません。どの顧客の話ですか？`);
-    expect(review.question).not.toContain("」は既存顧客に見つかりません");
+    expect(review.question).toBe(`メモ「${text}」はどの案件の話ですか？`);
+    expect(review.optionsJson!.map(o => o.id)).toEqual(["memo"]); // no existing open opportunities yet
   });
 
+  it("offers the user's own recently-updated open opportunities as candidates", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      persons: [{ name: "鈴木", confidence: 0.6 }],
+      opportunity: { match: "NEW", confidence: 0.6 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const account = makeAccount(svc.repo);
+    const opp = makeOpportunity(svc.repo, account.id, user.id, { title: "既存案件" });
+
+    const result = await svc.capture({ userId: user.id }, "鈴木さんから電話。詳細は未定。");
+    const review = result.reviews.find(r => r.type === "MEMO_TARGET")!;
+    expect(review.optionsJson!.map(o => o.id)).toEqual([`opportunity:${opp.id}`, "memo"]);
+  });
+
+  it("resolving with 'memo' keeps the source as a note, attached to nothing", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      persons: [{ name: "鈴木", confidence: 0.6 }],
+      opportunity: { match: "NEW", confidence: 0.6 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const actor = { userId: user.id };
+
+    const result = await svc.capture(actor, "鈴木さんから電話。詳細は未定。");
+    const review = result.reviews.find(r => r.type === "MEMO_TARGET")!;
+    await svc.resolveReview(actor, review.id, { optionId: "memo" });
+
+    expect(svc.getCapture(actor, result.source.id).source.processingStatus).toBe("PROCESSED");
+    expect(svc.listOpportunities(actor)).toHaveLength(0);
+  });
+
+  it("resolving with an existing opportunity reprocesses the memo pinned to it", async () => {
+    const llm = new FakeLlmProvider([
+      extractionJson({ persons: [{ name: "鈴木", confidence: 0.6 }], opportunity: { match: "NEW", confidence: 0.6 } }),
+      extractionJson({ next_actions: [{
+        action_type: "CALL", title: "折り返し電話", purpose: "詳細確認",
+        due_at: null, due_confidence: 0.3, priority: "NORMAL", confidence: 0.9,
+      }] }),
+    ]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const actor = { userId: user.id };
+    const account = makeAccount(svc.repo);
+    const opp = makeOpportunity(svc.repo, account.id, user.id, { title: "既存案件" });
+
+    const result = await svc.capture(actor, "鈴木さんから電話。詳細は未定。");
+    const review = result.reviews.find(r => r.type === "MEMO_TARGET")!;
+    await svc.resolveReview(actor, review.id, { optionId: `opportunity:${opp.id}` });
+
+    const reprocessed = svc.getCapture(actor, result.source.id);
+    expect(reprocessed.source.processingStatus).toBe("PROCESSED");
+    expect(reprocessed.opportunity?.id).toBe(opp.id);
+    expect(reprocessed.nextActions.map(a => a.title)).toEqual(["折り返し電話"]);
+  });
+
+  it("an unresolved MEMO_TARGET capture can still be reverted (dismisses the review)", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      persons: [{ name: "鈴木", confidence: 0.6 }], opportunity: { match: "NEW", confidence: 0.6 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const actor = { userId: user.id };
+
+    const result = await svc.capture(actor, "鈴木さんから電話。詳細は未定。");
+    const review = result.reviews.find(r => r.type === "MEMO_TARGET")!;
+    expect(review.status).toBe("OPEN");
+
+    svc.revertCapture(actor, result.source.id);
+    expect(svc.getCapture(actor, result.source.id).source.processingStatus).toBe("REVERTED");
+    expect(svc.listReviews(actor)).toHaveLength(0); // the MEMO_TARGET review was dismissed, not left dangling
+  });
+});
+
+describe("CUSTOMER_AMBIGUOUS question wording quotes the memo, not the AI's guessed name", () => {
   it("a plausible but unmatched company name is quoted as the AI's guess, not stated as fact", async () => {
     const llm = new FakeLlmProvider([extractionJson({
       accounts: [{ name: "テスト商事", confidence: 0.6 }],
@@ -557,7 +674,7 @@ describe("customer resolution does not silently reuse an unconfirmed placeholder
     // A human confirms it actually is the same customer as account1.
     const review = second.reviews.find(r => r.type === "CUSTOMER_AMBIGUOUS")!;
     const pick = review.optionsJson!.find(o => o.value && (o.value as { accountId?: string }).accountId === account1Id)!;
-    svc.resolveReview(actor, review.id, { optionId: pick.id });
+    await svc.resolveReview(actor, review.id, { optionId: pick.id });
     expect(svc.repo.getAccount(account1Id)!.resolutionStatus).toBe("MANUAL"); // promoted, not left UNRESOLVED
     expect(svc.listOpportunities(actor)).toHaveLength(2); // merged account, still 2 opportunities under it
 
@@ -708,7 +825,7 @@ describe("per-opportunity contacts (窓口)", () => {
     expect(svc.repo.getOpportunity(opp.id)!.contactPersonIds ?? []).toEqual([]);
   });
 
-  it("merging opportunities (OPPORTUNITY_AMBIGUOUS resolution) unions their contacts", () => {
+  it("merging opportunities (OPPORTUNITY_AMBIGUOUS resolution) unions their contacts", async () => {
     const svc = makeService(new FakeLlmProvider([]), NOW);
     const user = makeUser(svc.repo, "SALES");
     const account = makeAccount(svc.repo);
@@ -729,7 +846,7 @@ describe("per-opportunity contacts (窓口)", () => {
       optionsJson: [{ id: "pick-target", label: "target", value: { opportunityId: target.id } }],
       sourceEvidenceIds: [], status: "OPEN", createdAt: NOW,
     });
-    svc.resolveReview(actor, "review-merge", { optionId: "pick-target" });
+    await svc.resolveReview(actor, "review-merge", { optionId: "pick-target" });
 
     const merged = svc.getOpportunity(actor, target.id);
     expect(new Set(merged.contactPersonIds)).toEqual(new Set([contactA.id, contactB.id]));

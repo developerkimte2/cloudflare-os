@@ -17,6 +17,7 @@ import type {
   SalesManagementApi,
   SourceDocument,
   UserDto,
+  WhoAmI,
 } from "../../src/management-types";
 import { useApiAction, useAsyncData } from "../api";
 import {
@@ -29,6 +30,7 @@ import {
 import { ConfirmInline } from "../components/ConfirmInline";
 import { CustomerInfo } from "../components/CustomerInfo";
 import { NextActionRow } from "../components/NextActionRow";
+import { PinnedCaptureBox } from "../components/PinnedCaptureBox";
 import { ReviewCard } from "../components/ReviewCard";
 import { SuggestionRow } from "../components/SuggestionRow";
 import { formatDate, formatDateTime, isoToLocalInput, localInputToIso } from "../format";
@@ -53,13 +55,17 @@ const LIFECYCLE_STATES: LifecycleState[] = ["OPEN", "WON", "LOST", "ON_HOLD", "C
 export default function OpportunityDetailPage({
   api,
   user,
+  ai,
   opportunityId,
   onOpenCustomer,
+  onOpenOpportunity,
 }: {
   api: RpcStub<SalesManagementApi>;
   user: UserDto;
+  ai: WhoAmI["ai"];
   opportunityId: string;
   onOpenCustomer: (accountId: string) => void;
+  onOpenOpportunity: (id: string) => void;
 }) {
   const timezone = user.timezone || "Asia/Tokyo";
   const runAction = useApiAction();
@@ -187,6 +193,21 @@ export default function OpportunityDetailPage({
         onSave={savePatch}
         onOpenCustomer={onOpenCustomer}
       />
+
+      <div className="mt-4">
+        <PinnedCaptureBox
+          api={api}
+          opportunityId={opportunityId}
+          timezone={timezone}
+          ai={ai}
+          onOpenOpportunity={onOpenOpportunity}
+          onResolveReview={resolveReview}
+          onDismissReview={dismissReview}
+          onAdoptSuggestion={adoptSuggestion}
+          onDismissSuggestion={dismissSuggestion}
+          onCaptured={reload}
+        />
+      </div>
 
       <Section
         title="顧客情報"

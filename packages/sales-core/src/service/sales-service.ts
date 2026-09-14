@@ -135,8 +135,9 @@ export class SalesService {
   /** Stores the raw text and runs the pipeline. Never throws on AI failure (see `error`). */
   async capture(actor: Actor, text: string, options: CaptureOptions = {}): Promise<CaptureResult> {
     const user = this.requireUser(actor);
+    const opportunityId = this.requireCaptureTarget(user, options.opportunityId);
     const receipt = await captureText(this.ctx, {
-      userId: user.id, text, sourceType: options.sourceType, occurredAt: options.occurredAt,
+      userId: user.id, text, sourceType: options.sourceType, occurredAt: options.occurredAt, opportunityId,
     });
     if (!receipt.duplicate) await processSource(this.ctx, receipt.sourceId);
     return { ...this.getCapture(actor, receipt.sourceId), duplicate: receipt.duplicate };
@@ -145,10 +146,19 @@ export class SalesService {
   /** Stores the raw text only (RECEIVED). Processing happens later via `retryCapture`. */
   async receive(actor: Actor, text: string, options: CaptureOptions = {}): Promise<{ sourceId: string; duplicate: boolean }> {
     const user = this.requireUser(actor);
+    const opportunityId = this.requireCaptureTarget(user, options.opportunityId);
     const receipt = await captureText(this.ctx, {
-      userId: user.id, text, sourceType: options.sourceType, occurredAt: options.occurredAt,
+      userId: user.id, text, sourceType: options.sourceType, occurredAt: options.occurredAt, opportunityId,
     });
     return { sourceId: receipt.sourceId, duplicate: receipt.duplicate };
+  }
+
+  /** Validates CaptureOptions.opportunityId (pinned capture), if given; undefined otherwise. */
+  private requireCaptureTarget(user: User, opportunityId: string | undefined): string | undefined {
+    if (opportunityId === undefined) return undefined;
+    const o = this.repo.getOpportunity(opportunityId);
+    if (!o || !this.canSee(user, o)) throw new NotFoundError("案件");
+    return opportunityId;
   }
 
   /**
@@ -683,7 +693,12 @@ export class SalesService {
     return items.map(r => this.reviewDto(r));
   }
 
-  resolveReview(actor: Actor, reviewId: string, resolution: ReviewResolution): ReviewDto {
+  /**
+   * async because MEMO_TARGET (pin the memo to a chosen deal, then re-run extraction against it)
+   * calls the LLM — which cannot happen inside the synchronous DB transaction the rest of this
+   * method runs in. That reprocessing step, if any, happens after the transaction commits.
+   */
+  async resolveReview(actor: Actor, reviewId: string, resolution: ReviewResolution): Promise<ReviewDto> {
     const user = this.requireUser(actor);
     const review = this.repo.getReview(reviewId);
     if (!review) throw new NotFoundError("確認項目");
@@ -693,14 +708,18 @@ export class SalesService {
     if (!option) throw new TypeError(`不明な選択肢: ${resolution.optionId}`);
     const value = (option.value ?? {}) as Record<string, JsonValue>;
     const now = nowIso(this.ctx.clock);
+    let reprocessSourceId: string | undefined;
 
-    return this.repo.transaction(() => {
+    const resolvedDto = this.repo.transaction(() => {
       switch (review.type) {
         case "CUSTOMER_AMBIGUOUS":
           this.resolveCustomer(user, review, value);
           break;
         case "OPPORTUNITY_AMBIGUOUS":
           this.resolveOpportunity(user, review, value);
+          break;
+        case "MEMO_TARGET":
+          reprocessSourceId = this.resolveMemoTarget(user, review, value, now);
           break;
         case "STATE_AMBIGUOUS":
           if (typeof value.lifecycleState === "string") {
@@ -738,12 +757,43 @@ export class SalesService {
           this.repo.updateDecision({ ...d, status: option.id === "none" || option.id === "keep" ? "REJECTED" : "APPROVED" });
         }
       }
-      this.settleSourceStatus(review.sourceEvidenceIds);
+      // A pending reprocess (MEMO_TARGET → pinned) settles the source itself once it finishes.
+      if (!reprocessSourceId) this.settleSourceStatus(review.sourceEvidenceIds);
       audit(this.ctx, { actorType: "USER", actorId: user.id, action: "REVIEW_RESOLVED",
         entityType: "review_item", entityId: review.id, after: resolved.resolutionJson,
         sourceIds: review.sourceEvidenceIds });
       return this.reviewDto(resolved);
     });
+
+    if (reprocessSourceId) await processSource(this.ctx, reprocessSourceId);
+    return resolvedDto;
+  }
+
+  /**
+   * MEMO_TARGET: `value.opportunityId` pins the memo to that deal (returns the source id so the
+   * caller re-runs extraction against it, outside this synchronous transaction); `value.memo`
+   * leaves it as a plain note, attached to nothing.
+   */
+  private resolveMemoTarget(
+    user: User, review: ReviewItem, value: Record<string, JsonValue>, now: string,
+  ): string | undefined {
+    const sourceId = review.relatedEntityId!;
+    const source = this.repo.getSource(sourceId);
+    if (!source) throw new NotFoundError("取込");
+    if (typeof value.opportunityId === "string") {
+      const o = this.repo.getOpportunity(value.opportunityId);
+      if (!o || !this.canSee(user, o)) throw new NotFoundError("案件");
+      // RECEIVED, not PROCESSING: processSource (called after this transaction commits) requires
+      // RECEIVED/FAILED and does its own PROCESSING transition.
+      this.repo.updateSource({ ...source, targetOpportunityId: value.opportunityId, processingStatus: "RECEIVED" });
+      return sourceId;
+    }
+    if (value.memo === true) {
+      this.repo.updateSource({ ...source, processingStatus: "PROCESSED", processedAt: now });
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "SOURCE_KEPT_AS_MEMO",
+        entityType: "source_document", entityId: sourceId });
+    }
+    return undefined;
   }
 
   dismissReview(actor: Actor, reviewId: string): ReviewDto {

@@ -73,7 +73,7 @@ describe("smoke: capture → extraction → today", () => {
 
     // Resolve the customer review as a new account → source becomes PROCESSED.
     const review = today.reviews[0]!;
-    svc.resolveReview({ userId: user.id }, review.id, { optionId: "new" });
+    await svc.resolveReview({ userId: user.id }, review.id, { optionId: "new" });
     expect(svc.getCapture({ userId: user.id }, result.source.id).source.processingStatus).toBe("PROCESSED");
     const detail = svc.getOpportunity({ userId: user.id }, result.opportunity!.id);
     expect(detail.account.resolutionStatus).toBe("MANUAL");

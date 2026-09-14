@@ -55,7 +55,7 @@ describe("migration 0005_opportunity_contact_person_ids backfill", () => {
     db.run("INSERT INTO activities (id, opportunity_id, person_ids, type, occurred_at, source_id, summary, created_at) VALUES (?,?,?,?,?,?,?,?)",
       "a1", "o1", JSON.stringify(["p1", "pOther"]), "NOTE", now, "s1", "summary", now);
 
-    const applied = migrate(db, MIGRATIONS);
+    const applied = migrate(db, MIGRATIONS.slice(0, 5)); // stop after 0005: this test is only about that one
     expect(applied).toEqual(["0005_opportunity_contact_person_ids"]);
     const repo = new Repository(db);
     expect(repo.getOpportunity("o1")!.contactPersonIds).toEqual(["p1"]);

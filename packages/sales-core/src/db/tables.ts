@@ -53,6 +53,7 @@ export const sourceDocuments = new Table<SourceDocument>("source_documents", "id
   col("raw_text", "rawText"), col("content_hash", "contentHash"), col("occurred_at", "occurredAt"),
   col("received_at", "receivedAt"), col("processing_status", "processingStatus"),
   col("processing_error", "processingError"), col("processed_at", "processedAt"),
+  col("target_opportunity_id", "targetOpportunityId"),
 ]);
 
 export const activities = new Table<Activity>("activities", "id", [

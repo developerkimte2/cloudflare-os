@@ -224,6 +224,12 @@ export interface SourceDocument {
   processingStatus: ProcessingStatus;
   processingError?: string;
   processedAt?: string;
+  /**
+   * When set, this memo is pinned to a specific opportunity: applyExtraction skips customer/deal
+   * resolution entirely and attaches the activity there directly (CaptureOptions.opportunityId, or
+   * a MEMO_TARGET review answered with an existing deal).
+   */
+  targetOpportunityId?: string;
 }
 
 export interface CalendarEventMirror {
@@ -301,6 +307,8 @@ export type ReviewItemType =
   | "AMOUNT_AMBIGUOUS"
   | "STATE_AMBIGUOUS"
   | "HIGH_RISK_ACTION"
+  /** A person was mentioned but no company at all — "which deal is this?" instead of guessing. */
+  | "MEMO_TARGET"
   | "OTHER";
 
 export type ReviewStatus = "OPEN" | "RESOLVED" | "DISMISSED";
