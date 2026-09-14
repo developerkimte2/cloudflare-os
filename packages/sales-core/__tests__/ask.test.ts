@@ -34,6 +34,18 @@ describe("looksLikeQuestion", () => {
     expect(looksLikeQuestion("ABC社の担当者をしりたい")).toBe(true);
   });
 
+  // 2026-09-14 regression found via capture_test_samples.csv: an unbounded match on "教えて" wrongly
+  // reclassified this real email recap as a question and silently dropped it (askQuestion() stores
+  // nothing). "教えて"/"知りたい" are common enough to show up as someone else's reported words inside
+  // a legitimate memo, unlike the more specific "状況"/"進捗" keywords, so they need a much shorter
+  // length cap to only catch a short, direct request aimed at the assistant.
+  it("does not treat a longer memo that merely quotes a request phrase as a question", () => {
+    const text = "件名: Re: 提案書について / 山田です。先日はありがとうございました。社内で検討した結果、" +
+      "来月頭に正式発注する方向です。契約書のフォーマットを教えてください。";
+    expect(text.length).toBeGreaterThan(40);
+    expect(looksLikeQuestion(text)).toBe(false);
+  });
+
   it("handles empty text without throwing", () => {
     expect(looksLikeQuestion("")).toBe(false);
     expect(looksLikeQuestion("   ")).toBe(false);

@@ -7,17 +7,25 @@
  */
 import { normalizeName } from "../domain/util.js";
 
-const QUESTION_KEYWORDS = [
-  "状況", "どうなっている", "どうなってる", "どうなった", "進捗", "ステータス",
-  // A request directed at the assistant ("ABC社の情報を教えてほしい"/"...おしえて") rather than a report
-  // of a customer interaction -- without this, it falls through to a capture and the AI, seeing a
-  // real company name in the text, creates a phantom opportunity for it (2026-09-14 finding). Both
-  // the kanji and hiragana spellings are listed since either is common in casual typed input.
-  "教えて", "おしえて", "知りたい", "しりたい",
-];
+const QUESTION_KEYWORDS = ["状況", "どうなっている", "どうなってる", "どうなった", "進捗", "ステータス"];
 
 /** Above this length, treat the text as a capture even if it happens to contain a question mark. */
 const MAX_QUESTION_LENGTH = 100;
+
+/**
+ * A request directed at the assistant ("ABC社の情報を教えてほしい"/"...おしえて") rather than a report of a
+ * customer interaction -- without this, it falls through to a capture and the AI, seeing a real
+ * company name in the text, creates a phantom opportunity for it (2026-09-14 finding). Both the
+ * kanji and hiragana spellings are listed since either is common in casual typed input.
+ *
+ * Kept separate from QUESTION_KEYWORDS with a *much* shorter length cap: unlike "状況"/"進捗", these
+ * are common enough to show up as someone else's reported words inside a legitimate long memo
+ * ("...契約書のフォーマットを教えてください、とのこと。" -- the customer's request, quoted in an email
+ * recap) -- confirmed against the 2026-09-14 capture_test_samples.csv batch, where a naive
+ * unbounded match on "教えて" wrongly reclassified exactly that email as a question and dropped it.
+ */
+const REQUEST_KEYWORDS = ["教えて", "おしえて", "知りたい", "しりたい"];
+const MAX_REQUEST_QUESTION_LENGTH = 40;
 
 /**
  * True when `text` reads as a short question about a case ("ABC社の状況どうなっている？") rather than
@@ -28,9 +36,12 @@ const MAX_QUESTION_LENGTH = 100;
  */
 export function looksLikeQuestion(text: string): boolean {
   const t = text.trim();
-  if (!t || t.length > MAX_QUESTION_LENGTH) return false;
-  if (t.endsWith("?") || t.endsWith("？")) return true;
-  return QUESTION_KEYWORDS.some((k) => t.includes(k));
+  if (!t) return false;
+  if (t.length <= MAX_QUESTION_LENGTH) {
+    if (t.endsWith("?") || t.endsWith("？")) return true;
+    if (QUESTION_KEYWORDS.some((k) => t.includes(k))) return true;
+  }
+  return t.length <= MAX_REQUEST_QUESTION_LENGTH && REQUEST_KEYWORDS.some((k) => t.includes(k));
 }
 
 export interface AskableOpportunity {
