@@ -506,6 +506,13 @@ function applyExtraction(
   ctx.repo.insertSnapshot(snapshot);
   app.snapshotId = snapshot.id;
 
+  // Contacts who show up in this record become this deal's 窓口 (same customer only; a mention
+  // resolved to a different account's person is not this opportunity's contact).
+  const sameAccountPersonIds = activity.personIds.filter(id => ctx.repo.getPerson(id)?.accountId === opportunity.accountId);
+  if (sameAccountPersonIds.length > 0) {
+    opportunity.contactPersonIds = [...new Set([...(opportunity.contactPersonIds ?? []), ...sameAccountPersonIds])];
+  }
+
   // --- 7. Persist opportunity with optimistic concurrency --------------------------------------------
   opportunity.lastMeaningfulActivityAt = maxIso(opportunity.lastMeaningfulActivityAt, occurredAt);
   opportunity.lastContextRecomputedAt = now;

@@ -165,7 +165,7 @@ describe("buildAnswerRequest", () => {
   const opportunity: OpportunitySummary = {
     id: "opp-1", title: "新機能提案", accountId: "acc-1", accountName: "ABC株式会社",
     accountResolutionStatus: "MANUAL", ownerUserId: "user-1", ownerName: "太郎",
-    collaboratorUserIds: [], lifecycleState: "OPEN", operationalState: "ACTIVE",
+    collaboratorUserIds: [], contactPersonIds: [], contactNames: [], lifecycleState: "OPEN", operationalState: "ACTIVE",
     riskLevel: "MEDIUM", riskReason: "返信が遅い",
     nextAction: {
       id: "na-1", opportunityId: "opp-1", assignedUserId: "user-1", actionType: "EMAIL",

@@ -79,7 +79,10 @@ export interface OpportunitySummary {
   ownerUserId: string;
   ownerName: string;
   collaboratorUserIds: string[];
-  /** Customer-side point of contact, if the account has a resolved person on file. */
+  /** This deal's 窓口 (contactPersonIds resolved to names), in the order they were set. */
+  contactPersonIds: string[];
+  contactNames: string[];
+  /** First of contactNames, kept for existing callers; undefined when no contact is set. */
   primaryContactName?: string;
   lifecycleState: LifecycleState;
   operationalState: Opportunity["operationalState"];
@@ -118,7 +121,7 @@ export interface OpportunityFilter {
   expectedAmountGte?: number;
   /** Only opportunities with no meaningful activity for this many days. */
   stalledDays?: number;
-  /** Free-text search over title, phase, customer name, customer contacts and owner name. */
+  /** Free-text search over title, phase, customer name, the deal's contacts (窓口) and owner name. */
   query?: string;
   limit?: number;
 }
@@ -130,6 +133,8 @@ export interface OpportunityPatch {
   currency?: string;
   expectedCloseDate?: string | null;
   proposalDocumentUrl?: string | null;
+  /** Must all be customer_persons of this opportunity's own account, or the update is rejected. */
+  contactPersonIds?: string[];
   lifecycleState?: LifecycleState;
   ownerUserId?: string;
   collaboratorUserIds?: string[];

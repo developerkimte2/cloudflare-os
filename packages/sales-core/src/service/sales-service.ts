@@ -400,6 +400,16 @@ export class SalesService {
     if (patch.currency !== undefined) next.currency = patch.currency;
     if (patch.expectedCloseDate !== undefined) next.expectedCloseDate = patch.expectedCloseDate ?? undefined;
     if (patch.proposalDocumentUrl !== undefined) next.proposalDocumentUrl = patch.proposalDocumentUrl?.trim() || undefined;
+    if (patch.contactPersonIds !== undefined) {
+      const ids = [...new Set(patch.contactPersonIds)];
+      for (const personId of ids) {
+        const person = this.repo.getPerson(personId);
+        if (!person || person.accountId !== o.accountId) {
+          throw new TypeError("窓口に指定できるのはこの顧客の担当者だけです");
+        }
+      }
+      next.contactPersonIds = ids;
+    }
     if (patch.lifecycleState !== undefined) next.lifecycleState = patch.lifecycleState;
     if (patch.ownerUserId !== undefined) {
       if (!this.repo.getUser(patch.ownerUserId)) throw new NotFoundError("担当者");
@@ -741,16 +751,20 @@ export class SalesService {
     const owner = this.repo.getUser(o.ownerUserId);
     const snapshot = this.repo.latestSnapshot(o.id);
     const nextAction = o.nextActionId ? this.repo.getNextAction(o.nextActionId) : undefined;
-    // Accounts can have several contacts; there is no "primary" flag in the domain model yet, so
-    // the first alphabetically (listPersonsForAccount's order) stands in until one is added.
-    const primaryContact = this.repo.listPersonsForAccount(o.accountId)[0];
+    // Drop ids that no longer resolve to a person of this same account (deleted contact, or a
+    // stale id left over from a customer merge) rather than let them leak into the DTO.
+    const contacts = (o.contactPersonIds ?? [])
+      .map(id => this.repo.getPerson(id))
+      .filter((p): p is CustomerPerson => !!p && p.accountId === o.accountId);
     return {
       id: o.id, title: o.title, accountId: o.accountId,
       accountName: account?.displayName ?? UNRESOLVED_ACCOUNT_NAME,
       accountResolutionStatus: account?.resolutionStatus ?? "UNRESOLVED",
       ownerUserId: o.ownerUserId, ownerName: owner?.displayName ?? "?",
       collaboratorUserIds: o.collaboratorUserIds,
-      primaryContactName: primaryContact?.displayName,
+      contactPersonIds: contacts.map(p => p.id),
+      contactNames: contacts.map(p => p.displayName),
+      primaryContactName: contacts[0]?.displayName,
       lifecycleState: o.lifecycleState, operationalState: o.operationalState,
       phaseLabel: o.phaseLabel, expectedAmount: o.expectedAmount, currency: o.currency,
       expectedCloseDate: o.expectedCloseDate, proposalDocumentUrl: o.proposalDocumentUrl,
@@ -917,6 +931,7 @@ export class SalesService {
       expectedAmount: fresh.expectedAmount ?? target.expectedAmount,
       lastMeaningfulActivityAt: [fresh.lastMeaningfulActivityAt, target.lastMeaningfulActivityAt]
         .filter(isDefined).sort().at(-1),
+      contactPersonIds: [...new Set([...(target.contactPersonIds ?? []), ...(fresh.contactPersonIds ?? [])])],
       updatedAt: now,
     };
     this.repo.updateOpportunity(merged, target.version);

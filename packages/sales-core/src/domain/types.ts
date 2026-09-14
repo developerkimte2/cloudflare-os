@@ -100,6 +100,8 @@ export interface Opportunity {
   expectedCloseDate?: string;
   /** Free-form link to the proposal/quote material for this deal (Drive, Slides, etc.). */
   proposalDocumentUrl?: string;
+  /** This deal's 窓口: ids into customer_persons, always of this opportunity's own account. */
+  contactPersonIds?: string[];
   nextActionId?: string;
   lastMeaningfulActivityAt?: string;
   lastContextRecomputedAt?: string;

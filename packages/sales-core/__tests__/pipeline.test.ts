@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FakeLlmProvider } from "../src/ai/provider.js";
 import { captureText, processSource } from "../src/pipeline/ingest.js";
 import { AuthorizationError, NotFoundError } from "../src/service/sales-service.js";
-import { addDays } from "../src/domain/util.js";
+import { addDays, newId } from "../src/domain/util.js";
 import { extractionJson, makeAccount, makeOpportunity, makeService, makeUser } from "./helpers.js";
 
 const NOW = "2026-09-08T01:00:00Z"; // 2026-09-08T10:00 JST, a Tuesday
@@ -448,6 +448,100 @@ describe("customer contact details", () => {
 
     expect(() => svc.updateAccount({ userId: outsider.id }, account.id, { phone: "03" })).toThrow(/顧客/);
     expect(() => svc.createPerson({ userId: outsider.id }, account.id, { displayName: "x" })).toThrow(/顧客/);
+  });
+});
+
+describe("per-opportunity contacts (窓口)", () => {
+  it("updateOpportunity accepts this customer's contacts and rejects another customer's", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    const other = makeAccount(svc.repo, { displayName: "別会社" });
+    const opp = makeOpportunity(svc.repo, account.id, user.id);
+    const actor = { userId: user.id };
+    const contact = svc.createPerson(actor, account.id, { displayName: "山田" });
+    // Direct repo insert: this SALES user has no opportunity with `other`, so svc.createPerson
+    // would (correctly) refuse — irrelevant to what this test checks (updateOpportunity's own guard).
+    const outsideContact = { id: newId(), accountId: other.id, displayName: "佐藤", resolutionStatus: "MANUAL" as const,
+      createdAt: NOW, updatedAt: NOW };
+    svc.repo.insertPerson(outsideContact);
+
+    const saved = svc.updateOpportunity(actor, opp.id, { contactPersonIds: [contact.id, contact.id], version: 1 });
+    expect(saved.contactPersonIds).toEqual([contact.id]); // duplicates collapsed
+    expect(saved.contactNames).toEqual(["山田"]);
+    expect(saved.primaryContactName).toBe("山田");
+
+    expect(() => svc.updateOpportunity(actor, opp.id, { contactPersonIds: [outsideContact.id], version: saved.version }))
+      .toThrow(/窓口/);
+  });
+
+  it("summarize() silently drops a contact id that no longer resolves (deleted person)", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    const opp = makeOpportunity(svc.repo, account.id, user.id);
+    const actor = { userId: user.id };
+    const contact = svc.createPerson(actor, account.id, { displayName: "山田" });
+    const saved = svc.updateOpportunity(actor, opp.id, { contactPersonIds: [contact.id], version: 1 });
+
+    svc.repo.deletePerson(contact.id);
+    const detail = svc.getOpportunity(actor, saved.id);
+    expect(detail.contactPersonIds).toEqual([]);
+    expect(detail.contactNames).toEqual([]);
+    expect(detail.primaryContactName).toBeUndefined();
+  });
+
+  it("capture() adds a matched contact as this deal's 窓口, and revertCapture() undoes it", async () => {
+    const svc = makeService(new FakeLlmProvider([
+      extractionJson({
+        accounts: [{ name: "ABC株式会社", confidence: 0.9 }],
+        persons: [{ name: "山田", company: "ABC株式会社", confidence: 0.9 }],
+        // Not "NEW": lets ingest reuse the account's one existing open opportunity instead of
+        // creating a fresh one (a created opportunity is deleted wholesale on revert, which would
+        // not exercise the "restore contactPersonIds to what it was" path this test is for).
+        opportunity: { match: "EXISTING", confidence: 0.9 },
+      }),
+    ]), NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const account = makeAccount(svc.repo, { displayName: "ABC株式会社" });
+    const contact = svc.createPerson({ userId: user.id }, account.id, { displayName: "山田" });
+    const opp = makeOpportunity(svc.repo, account.id, user.id);
+    expect(opp.contactPersonIds ?? []).toEqual([]);
+
+    const result = await svc.capture({ userId: user.id }, "ABCの山田さんと打合せ");
+    expect(result.opportunity?.id).toBe(opp.id);
+    expect(result.opportunity?.contactPersonIds).toEqual([contact.id]);
+    expect(result.opportunity?.contactNames).toEqual(["山田"]);
+
+    svc.revertCapture({ userId: user.id }, result.source.id);
+    expect(svc.repo.getOpportunity(opp.id)!.contactPersonIds ?? []).toEqual([]);
+  });
+
+  it("merging opportunities (OPPORTUNITY_AMBIGUOUS resolution) unions their contacts", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    const actor = { userId: user.id };
+    // A visible opportunity must exist before createPerson (canSeeAccount) will allow it.
+    const targetOpp = makeOpportunity(svc.repo, account.id, user.id, { title: "target" });
+    const contactA = svc.createPerson(actor, account.id, { displayName: "山田" });
+    const contactB = svc.createPerson(actor, account.id, { displayName: "鈴木" });
+    const target = svc.updateOpportunity(actor, targetOpp.id, { contactPersonIds: [contactA.id], version: 1 });
+    const fresh = svc.updateOpportunity(
+      actor,
+      makeOpportunity(svc.repo, account.id, user.id, { title: "fresh" }).id,
+      { contactPersonIds: [contactB.id], version: 1 },
+    );
+    svc.repo.insertReview({
+      id: "review-merge", type: "OPPORTUNITY_AMBIGUOUS", assignedUserId: user.id,
+      relatedEntityType: "opportunity", relatedEntityId: fresh.id, question: "q",
+      optionsJson: [{ id: "pick-target", label: "target", value: { opportunityId: target.id } }],
+      sourceEvidenceIds: [], status: "OPEN", createdAt: NOW,
+    });
+    svc.resolveReview(actor, "review-merge", { optionId: "pick-target" });
+
+    const merged = svc.getOpportunity(actor, target.id);
+    expect(new Set(merged.contactPersonIds)).toEqual(new Set([contactA.id, contactB.id]));
   });
 });
 

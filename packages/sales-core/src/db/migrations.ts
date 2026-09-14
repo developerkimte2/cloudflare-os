@@ -314,6 +314,20 @@ ALTER TABLE customer_accounts ADD COLUMN phone TEXT;
 ALTER TABLE customer_accounts ADD COLUMN website_url TEXT;
 `,
   },
+  {
+    id: "0005_opportunity_contact_person_ids",
+    sql: `
+ALTER TABLE opportunities ADD COLUMN contact_person_ids TEXT;
+UPDATE opportunities SET contact_person_ids = (
+  SELECT json_group_array(person_id) FROM (
+    SELECT DISTINCT je.value AS person_id
+    FROM activities a, json_each(a.person_ids) je
+    WHERE a.opportunity_id = opportunities.id
+      AND je.value IN (SELECT id FROM customer_persons WHERE account_id = opportunities.account_id)
+  )
+);
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

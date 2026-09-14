@@ -29,6 +29,40 @@ describe("migrate", () => {
   });
 });
 
+describe("migration 0005_opportunity_contact_person_ids backfill", () => {
+  it("sets contactPersonIds from activities.person_ids, restricted to the opportunity's own account", () => {
+    const db = new NodeSqliteExecutor();
+    migrate(db, MIGRATIONS.slice(0, 4)); // stop before 0005: contact_person_ids does not exist yet
+    const now = "2026-09-08T00:00:00.000Z";
+    db.run("INSERT INTO users (id, email, display_name, role, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      "u1", "u1@example.com", "太郎", "SALES", now, now);
+    db.run("INSERT INTO customer_accounts (id, display_name, resolution_status, created_at, updated_at) VALUES (?,?,?,?,?)",
+      "acc1", "ABC株式会社", "MANUAL", now, now);
+    db.run("INSERT INTO customer_accounts (id, display_name, resolution_status, created_at, updated_at) VALUES (?,?,?,?,?)",
+      "acc2", "他社", "MANUAL", now, now);
+    db.run("INSERT INTO customer_persons (id, account_id, display_name, resolution_status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      "p1", "acc1", "山田", "MANUAL", now, now);
+    db.run("INSERT INTO customer_persons (id, account_id, display_name, resolution_status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+      "pOther", "acc2", "別会社の人", "MANUAL", now, now);
+    db.run("INSERT INTO opportunities (id, account_id, title, owner_user_id, lifecycle_state, operational_state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+      "o1", "acc1", "案件1（記録あり）", "u1", "OPEN", "UNKNOWN", now, now);
+    db.run("INSERT INTO opportunities (id, account_id, title, owner_user_id, lifecycle_state, operational_state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+      "o2", "acc1", "案件2（記録なし）", "u1", "OPEN", "UNKNOWN", now, now);
+    db.run("INSERT INTO source_documents (id, source_type, content_hash, received_at, processing_status) VALUES (?,?,?,?,?)",
+      "s1", "TEXT", "hash1", now, "PROCESSED");
+    // o1's activity mentions both this account's person (p1) and, oddly, another account's person
+    // (pOther) — the backfill must keep only p1.
+    db.run("INSERT INTO activities (id, opportunity_id, person_ids, type, occurred_at, source_id, summary, created_at) VALUES (?,?,?,?,?,?,?,?)",
+      "a1", "o1", JSON.stringify(["p1", "pOther"]), "NOTE", now, "s1", "summary", now);
+
+    const applied = migrate(db, MIGRATIONS);
+    expect(applied).toEqual(["0005_opportunity_contact_person_ids"]);
+    const repo = new Repository(db);
+    expect(repo.getOpportunity("o1")!.contactPersonIds).toEqual(["p1"]);
+    expect(repo.getOpportunity("o2")!.contactPersonIds).toEqual([]);
+  });
+});
+
 describe("Table mapper round-trip", () => {
   it("round-trips JSON, boolean and null columns", () => {
     interface Widget { id: string; tags: string[]; flag: boolean; note?: string }
@@ -147,21 +181,25 @@ describe("Repository.listOpportunitiesVisibleTo role filtering", () => {
     expect(visible).toHaveLength(3);
   });
 
-  it("text search matches title, customer, contact and owner names, and treats % and _ literally", () => {
+  it("text search matches title, customer, this deal's contacts and owner names, and treats % and _ literally", () => {
     const other = makeAccount({ displayName: "ブルームワークス" });
     repo.insertAccount(other);
-    repo.insertPerson({ id: newId(), accountId: other.id, displayName: "山田花子", resolutionStatus: "MANUAL",
-      createdAt: "2026-09-08T00:00:00.000Z", updatedAt: "2026-09-08T00:00:00.000Z" });
-    repo.insertOpportunity(makeOpportunity(other.id, sales1.id, { title: "100%_導入" }));
+    const hanako = { id: newId(), accountId: other.id, displayName: "山田花子", resolutionStatus: "MANUAL" as const,
+      createdAt: "2026-09-08T00:00:00.000Z", updatedAt: "2026-09-08T00:00:00.000Z" };
+    repo.insertPerson(hanako);
+    // A second opportunity of the same company, with no contact set, to prove the match is
+    // per-deal (窓口) rather than "any contact of this customer".
+    repo.insertOpportunity(makeOpportunity(other.id, sales1.id, { title: "no-contact-set" }));
+    repo.insertOpportunity(makeOpportunity(other.id, sales1.id, { title: "100%_導入", contactPersonIds: [hanako.id] }));
     const titles = (text: string) => repo.listOpportunitiesVisibleTo(manager, { text }).map(o => o.title).sort();
 
     expect(titles("collab")).toEqual(["collab-with-1"]);
-    expect(titles("ブルーム")).toEqual(["100%_導入"]);
+    expect(titles("ブルーム")).toEqual(["100%_導入", "no-contact-set"]);
     expect(titles("山田")).toEqual(["100%_導入"]);
     expect(titles("sales2")).toEqual(["collab-with-1", "owned-by-2"]);
     expect(titles("%_")).toEqual(["100%_導入"]);
     expect(titles("_")).toEqual(["100%_導入"]);
-    expect(titles("  ")).toHaveLength(4);
+    expect(titles("  ")).toHaveLength(5);
   });
 });
 
