@@ -12,7 +12,7 @@ import { formatDateTimeJa, formatLocal } from "../domain/util.js";
 import { contextSnapshotSchema, extractionSchema, jsonSchemaOf } from "./schema.js";
 import type { LlmRequest } from "./provider.js";
 
-export const EXTRACTION_PROMPT_VERSION = "extract.v2";
+export const EXTRACTION_PROMPT_VERSION = "extract.v3";
 export const CONTEXT_PROMPT_VERSION = "context.v1";
 export const ANSWER_PROMPT_VERSION = "answer.v4";
 
@@ -100,7 +100,10 @@ export function buildExtractionRequest(input: ExtractionInput): LlmRequest {
       "本文の説明文や、担当者の氏名・敬称を会社名として書かない。known accounts に載っている情報 (メールアドレス等) を、" +
       "本文に書かれていないのに person_candidates に書き写さない。",
     "9. 次アクションは営業担当者が実際に行う具体的な行動にする (「フォローする」ではなく「稟議結果を電話で確認する」)。",
-    "10. 営業と無関係な入力 (挨拶・雑談・テストなど) は not_sales_related=true にし、他の項目は最小限にする。",
+    "10. 営業と無関係な入力 (挨拶・雑談・テストなど) は not_sales_related=true にし、他の項目は最小限にする。" +
+      "本文が顧客とのやり取りの記録ではなく、担当者がこのシステム (AI) に対して行った質問・依頼" +
+      " (例:「A社の情報を教えてほしい」「A社の担当者を知りたい」) である場合も、本文に会社名が含まれていても" +
+      " not_sales_related=true にする。会社名が実在するかどうかは判断材料にしない。",
     "11. facts / decisions / commitments の evidence には本文からの短い引用を入れる。",
     "12. 本文の言語で要約を書く (日本語の入力には日本語)。",
     "",

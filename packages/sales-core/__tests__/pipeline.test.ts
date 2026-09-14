@@ -218,6 +218,26 @@ describe("customer / opportunity resolution scenarios", () => {
     expect(result.opportunity).toBeUndefined();
     expect(svc.listOpportunities({ userId: user.id })).toHaveLength(0);
   });
+
+  // 2026-09-14 finding: "山田商事の情報を教えてほしい" is a request to the assistant, not a record of a
+  // customer interaction -- even though it names a real company. Defense-in-depth alongside
+  // looksLikeQuestion's client-side keyword check (extract.v3's rule 10): not_sales_related short-
+  // circuits before entity resolution runs, so a stray account_candidate here must still create
+  // nothing.
+  it("a request to the assistant creates no account/opportunity even if it names one", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      not_sales_related: true,
+      accounts: [{ name: "山田商事", confidence: 0.9 }],
+      activity: { type: "NOTE", summary: "山田商事の情報を教えてほしいという依頼" },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const result = await svc.capture({ userId: user.id }, "山田商事の情報を教えてほしい");
+    expect(result.notSalesRelated).toBe(true);
+    expect(result.opportunity).toBeUndefined();
+    expect(svc.listOpportunities({ userId: user.id })).toHaveLength(0);
+    expect(svc.repo.findAccountsByNormalizedName("山田商事")).toHaveLength(0);
+  });
 });
 
 describe("state and date review flows", () => {

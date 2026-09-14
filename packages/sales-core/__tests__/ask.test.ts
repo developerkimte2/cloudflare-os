@@ -24,6 +24,11 @@ describe("looksLikeQuestion", () => {
     expect(looksLikeQuestion("ABCの山田さんと打合せをした")).toBe(false);
   });
 
+  it("recognizes a request to the assistant even without a question mark", () => {
+    expect(looksLikeQuestion("山田商事の情報を教えてほしい")).toBe(true);
+    expect(looksLikeQuestion("ABC社の担当者を知りたい")).toBe(true);
+  });
+
   it("handles empty text without throwing", () => {
     expect(looksLikeQuestion("")).toBe(false);
     expect(looksLikeQuestion("   ")).toBe(false);
