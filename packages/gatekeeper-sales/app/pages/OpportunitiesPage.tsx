@@ -19,10 +19,12 @@ export default function OpportunitiesPage({
   api,
   user,
   onOpenOpportunity,
+  onOpenCustomer,
 }: {
   api: RpcStub<SalesManagementApi>;
   user: UserDto;
   onOpenOpportunity: (id: string) => void;
+  onOpenCustomer: (accountId: string) => void;
 }) {
   const timezone = user.timezone || "Asia/Tokyo";
   const now = new Date();
@@ -156,7 +158,15 @@ export default function OpportunitiesPage({
                   onClick={() => onOpenOpportunity(opportunity.id)}
                   className="cursor-pointer hover:bg-kumo-tint"
                 >
-                  <Td className="max-w-[160px] truncate">{opportunity.accountName}</Td>
+                  <Td className="max-w-[160px] truncate" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenCustomer(opportunity.accountId)}
+                      className="truncate text-left text-kumo-link hover:underline"
+                    >
+                      {opportunity.accountName}
+                    </button>
+                  </Td>
                   <Td className="max-w-[200px] truncate font-medium text-kumo-default">{opportunity.title}</Td>
                   <Td>{opportunity.ownerName}</Td>
                   <Td className="max-w-[140px] truncate text-kumo-subtle" title={opportunity.contactNames.join("、") || undefined}>

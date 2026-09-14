@@ -15,6 +15,7 @@ import OnboardingPage from "./pages/OnboardingPage";
 import TodayPage from "./pages/TodayPage";
 import OpportunitiesPage from "./pages/OpportunitiesPage";
 import OpportunityDetailPage from "./pages/OpportunityDetailPage";
+import CustomerPage from "./pages/CustomerPage";
 import ReviewPage from "./pages/ReviewPage";
 import ManagerPage from "./pages/ManagerPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -23,6 +24,7 @@ export type Route =
   | { kind: "today" }
   | { kind: "opportunities" }
   | { kind: "opportunity"; id: string }
+  | { kind: "customer"; id: string }
   | { kind: "review" }
   | { kind: "manager" }
   | { kind: "settings" };
@@ -56,7 +58,8 @@ export default function App({ api, openPrompt }: Props) {
       setHistory(history.slice(0, -1));
       setRoute(previous);
     } else {
-      setRoute(route.kind === "opportunity" ? { kind: "opportunities" } : { kind: "today" });
+      const fallsBackToOpportunities = route.kind === "opportunity" || route.kind === "customer";
+      setRoute(fallsBackToOpportunities ? { kind: "opportunities" } : { kind: "today" });
     }
   }, [history, route]);
 
@@ -84,6 +87,7 @@ export default function App({ api, openPrompt }: Props) {
   }, [who?.user, refreshReviewCount]);
 
   const openOpportunity = useCallback((id: string) => navigate({ kind: "opportunity", id }), [navigate]);
+  const openCustomer = useCallback((id: string) => navigate({ kind: "customer", id }), [navigate]);
 
   if (whoError) {
     return (
@@ -147,7 +151,7 @@ export default function App({ api, openPrompt }: Props) {
               label={
                 history.length > 0
                   ? ROUTE_LABEL[history[history.length - 1]!.kind]
-                  : ROUTE_LABEL[route.kind === "opportunity" ? "opportunities" : "today"]
+                  : ROUTE_LABEL[route.kind === "opportunity" || route.kind === "customer" ? "opportunities" : "today"]
               }
               onBack={goBack}
             />
@@ -163,7 +167,12 @@ export default function App({ api, openPrompt }: Props) {
             />
           )}
           {route.kind === "opportunities" && (
-            <OpportunitiesPage api={api} user={user} onOpenOpportunity={openOpportunity} />
+            <OpportunitiesPage
+              api={api}
+              user={user}
+              onOpenOpportunity={openOpportunity}
+              onOpenCustomer={openCustomer}
+            />
           )}
           {route.kind === "opportunity" && (
             <OpportunityDetailPage
@@ -171,6 +180,16 @@ export default function App({ api, openPrompt }: Props) {
               api={api}
               user={user}
               opportunityId={route.id}
+              onOpenCustomer={openCustomer}
+            />
+          )}
+          {route.kind === "customer" && (
+            <CustomerPage
+              key={route.id}
+              api={api}
+              user={user}
+              accountId={route.id}
+              onOpenOpportunity={openOpportunity}
             />
           )}
           {route.kind === "review" && (
@@ -190,14 +209,16 @@ const ROUTE_LABEL: Record<Route["kind"], string> = {
   today: "今日",
   opportunities: "案件",
   opportunity: "案件詳細",
+  customer: "顧客",
   review: "確認",
   manager: "チーム",
   settings: "設定",
 };
 
 function sameRoute(a: Route, b: Route): boolean {
-  if (a.kind !== b.kind) return false;
-  return a.kind !== "opportunity" || (b.kind === "opportunity" && a.id === b.id);
+  if (a.kind === "opportunity") return b.kind === "opportunity" && a.id === b.id;
+  if (a.kind === "customer") return b.kind === "customer" && a.id === b.id;
+  return a.kind === b.kind;
 }
 
 function BackBar({ label, onBack }: { label: string; onBack: () => void }) {
@@ -251,7 +272,7 @@ function Sidebar({
         .map((item) => {
           const active =
             route.kind === item.route.kind ||
-            (item.route.kind === "opportunities" && route.kind === "opportunity");
+            (item.route.kind === "opportunities" && (route.kind === "opportunity" || route.kind === "customer"));
           const Icon = item.icon;
           return (
             <button

@@ -52,10 +52,12 @@ export default function OpportunityDetailPage({
   api,
   user,
   opportunityId,
+  onOpenCustomer,
 }: {
   api: RpcStub<SalesManagementApi>;
   user: UserDto;
   opportunityId: string;
+  onOpenCustomer: (accountId: string) => void;
 }) {
   const timezone = user.timezone || "Asia/Tokyo";
   const runAction = useApiAction();
@@ -166,9 +168,26 @@ export default function OpportunityDetailPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <OpportunityHeader opportunity={data} users={users ?? []} timezone={timezone} onSave={savePatch} />
+      <OpportunityHeader
+        opportunity={data}
+        users={users ?? []}
+        timezone={timezone}
+        onSave={savePatch}
+        onOpenCustomer={onOpenCustomer}
+      />
 
-      <Section title="顧客情報">
+      <Section
+        title="顧客情報"
+        action={
+          <button
+            type="button"
+            onClick={() => onOpenCustomer(data.account.id)}
+            className="text-xs text-kumo-link hover:underline"
+          >
+            この顧客の全案件 →
+          </button>
+        }
+      >
         <CustomerInfo
           account={data.account}
           persons={data.persons}
@@ -251,10 +270,12 @@ function OpportunityHeader({
   users,
   timezone,
   onSave,
+  onOpenCustomer,
 }: {
   opportunity: OpportunityDetail;
   users: UserDto[];
   timezone: string;
+  onOpenCustomer: (accountId: string) => void;
   onSave: (patch: OpportunityPatch) => void | Promise<void>;
 }) {
   const toasts = useKumoToastManager();
@@ -351,7 +372,13 @@ function OpportunityHeader({
           </button>
         </div>
       </div>
-      <p className="mt-0.5 text-sm text-kumo-subtle">{opportunity.accountName}</p>
+      <button
+        type="button"
+        onClick={() => onOpenCustomer(opportunity.accountId)}
+        className="mt-0.5 text-sm text-kumo-link hover:underline"
+      >
+        {opportunity.accountName}
+      </button>
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Field label="フェーズ">
