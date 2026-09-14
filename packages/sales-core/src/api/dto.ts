@@ -114,6 +114,13 @@ export interface OpportunityDetail extends OpportunitySummary {
   audit: AuditLog[];
 }
 
+export interface CustomerDetail {
+  account: CustomerAccount;
+  persons: CustomerPerson[];
+  /** Every opportunity of this customer the caller can see, all lifecycle states, newest update first. */
+  opportunities: OpportunitySummary[];
+}
+
 export interface OpportunityFilter {
   lifecycleStates?: LifecycleState[];
   ownerUserId?: string;

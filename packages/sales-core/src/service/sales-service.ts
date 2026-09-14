@@ -5,7 +5,7 @@
  */
 import type {
   AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
-  ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
+  CustomerDetail, ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
   OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, TodayAction, TodayView, UserDto,
 } from "../api/dto.js";
@@ -485,6 +485,18 @@ export class SalesService {
         entityType: "customer_person", entityId: personId, before: person, after: next });
     });
     return next;
+  }
+
+  getCustomer(actor: Actor, accountId: string): CustomerDetail {
+    const user = this.requireUser(actor);
+    const account = this.repo.getAccount(accountId);
+    if (!account || !this.canSeeAccount(user, accountId)) throw new NotFoundError("顧客");
+    return {
+      account,
+      persons: this.repo.listPersonsForAccount(accountId),
+      opportunities: this.repo.listOpportunitiesVisibleTo(user, { accountId, limit: 500 })
+        .map(o => this.summarize(o)),
+    };
   }
 
   async recompute(actor: Actor, opportunityId: string) {

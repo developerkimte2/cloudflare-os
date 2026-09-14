@@ -22,7 +22,7 @@ import type {
 } from "@gadgets/workshop-shared/gatekeeper";
 import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
-  ConfigDto, CustomerAccount, CustomerPerson, ManagerSummary, NextAction, NextActionFilter,
+  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, ManagerSummary, NextAction, NextActionFilter,
   NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
   OpportunitySummary, PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution,
   SalesConfig, SourceDocument, TodayView, UserDto,
@@ -482,6 +482,7 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   updateAccount(accountId: string, patch: AccountPatch): Promise<CustomerAccount> { return this.core.updateAccount(this.caller, accountId, patch); }
   createPerson(accountId: string, input: PersonInput): Promise<CustomerPerson> { return this.core.createPerson(this.caller, accountId, input); }
   updatePerson(personId: string, patch: PersonPatch): Promise<CustomerPerson> { return this.core.updatePerson(this.caller, personId, patch); }
+  getCustomer(accountId: string): Promise<CustomerDetail> { return this.core.getCustomer(this.caller, accountId); }
   listNextActions(filter?: NextActionFilter): Promise<NextAction[]> { return this.core.listNextActions(this.caller, filter); }
   createNextAction(input: NextActionInput): Promise<NextAction> { return this.core.createNextAction(this.caller, input); }
   updateNextAction(id: string, patch: NextActionPatch): Promise<NextAction> { return this.core.updateNextAction(this.caller, id, patch); }

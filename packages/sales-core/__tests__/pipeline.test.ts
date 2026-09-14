@@ -451,6 +451,37 @@ describe("customer contact details", () => {
   });
 });
 
+describe("getCustomer (customer page)", () => {
+  it("MANAGER sees every opportunity of the customer; SALES sees only their own", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const manager = makeUser(svc.repo, "MANAGER");
+    const salesUser = makeUser(svc.repo, "SALES");
+    const otherSales = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    const own = makeOpportunity(svc.repo, account.id, salesUser.id, { title: "own", lifecycleState: "WON" });
+    const others = makeOpportunity(svc.repo, account.id, otherSales.id, { title: "others", lifecycleState: "LOST" });
+    svc.createPerson({ userId: manager.id }, account.id, { displayName: "山田" });
+
+    const asManager = svc.getCustomer({ userId: manager.id }, account.id);
+    expect(asManager.account.id).toBe(account.id);
+    expect(asManager.persons.map(p => p.displayName)).toEqual(["山田"]);
+    expect(new Set(asManager.opportunities.map(o => o.id))).toEqual(new Set([own.id, others.id]));
+
+    const asSales = svc.getCustomer({ userId: salesUser.id }, account.id);
+    expect(asSales.opportunities.map(o => o.id)).toEqual([own.id]);
+  });
+
+  it("throws for a SALES user with no opportunity for this customer", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const owner = makeUser(svc.repo, "SALES");
+    const outsider = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    makeOpportunity(svc.repo, account.id, owner.id);
+
+    expect(() => svc.getCustomer({ userId: outsider.id }, account.id)).toThrow(/顧客/);
+  });
+});
+
 describe("per-opportunity contacts (窓口)", () => {
   it("updateOpportunity accepts this customer's contacts and rejects another customer's", () => {
     const svc = makeService(new FakeLlmProvider([]), NOW);

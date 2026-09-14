@@ -14,7 +14,7 @@ import {
   migrate, morningBriefMessageHash, newId, nowIso, systemClock, MORNING_BRIEF_NOTIFICATION_TYPE,
   type AccountPatch, type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog,
   type CaptureOptions, type CaptureResult, type Commitment, type ConfigDto, type CoreContext,
-  type CustomerAccount, type CustomerPerson, type ManagerSummary,
+  type CustomerAccount, type CustomerDetail, type CustomerPerson, type ManagerSummary,
   type NextAction, type NextActionFilter, type NextActionInput, type NextActionPatch,
   type OpportunityDetail, type OpportunityFilter, type OpportunityPatch, type OpportunitySummary,
   type PersonInput, type PersonPatch, type RegisterIdentityInput, type ReviewDto, type ReviewResolution, type SalesConfig,
@@ -227,6 +227,10 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
 
   async updatePerson(caller: Caller, personId: string, patch: PersonPatch): Promise<CustomerPerson> {
     return this.#service.updatePerson(this.#actor(caller), personId, patch);
+  }
+
+  async getCustomer(caller: Caller, accountId: string): Promise<CustomerDetail> {
+    return this.#service.getCustomer(this.#actor(caller), accountId);
   }
 
   async recomputeContext(caller: Caller, id: string): Promise<AIContextSnapshot> {
