@@ -192,6 +192,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   SOURCE_PROCESSED: "取込を処理",
   SOURCE_RECEIVED: "取込を受付",
   SOURCE_REVERTED: "取込を取消",
+  SUGGESTION_DISMISSED: "AI提案を却下",
   USER_CREATED: "メンバーを作成",
   USER_ROLE_CHANGED: "役割を変更",
   USER_UPDATED: "メンバーを更新",

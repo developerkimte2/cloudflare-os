@@ -4,8 +4,8 @@
  */
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, Commitment, CustomerAccount, CustomerPerson,
-  JsonValue, LifecycleState, NextAction, NextActionStatus, Opportunity, ReviewItem, SourceDocument, SourceType,
-  User, UserRole,
+  JsonValue, LifecycleState, NextAction, NextActionStatus, NextActionType, Opportunity, Priority,
+  ReviewItem, SourceDocument, SourceType, User, UserRole,
 } from "../domain/types.js";
 import type { SalesConfig } from "../rules/config.js";
 
@@ -66,8 +66,29 @@ export interface CaptureResult {
   commitments: Commitment[];
   reviews: ReviewDto[];
   decisions: AIDecision[];
+  /** AI-proposed next actions below nextActionAutoConfidence — not created, but not thrown away either. */
+  suggestions: NextActionSuggestion[];
   notSalesRelated?: boolean;
   error?: string;
+}
+
+/**
+ * A next action the AI proposed but didn't create outright (confidence below
+ * `nextActionAutoConfidence`) — surfaced instead of silently discarded, for one-tap adoption.
+ */
+export interface NextActionSuggestion {
+  /** The NEXT_ACTION AIDecision this came from. */
+  decisionId: string;
+  /** Index into that decision's appliedJson.skipped — pass back to adopt/dismiss this suggestion. */
+  index: number;
+  actionType: NextActionType;
+  title: string;
+  purpose: string;
+  dueAt?: string;
+  priority: Priority;
+  confidence: number;
+  /** When the decision (i.e. the capture that proposed this) was made. */
+  createdAt: string;
 }
 
 export interface OpportunitySummary {
@@ -106,6 +127,8 @@ export interface OpportunityDetail extends OpportunitySummary {
   persons: CustomerPerson[];
   context?: AIContextSnapshot;
   nextActions: NextAction[];
+  /** Not-yet-adopted/dismissed AI proposals, newest first. */
+  suggestions: NextActionSuggestion[];
   commitments: Commitment[];
   activities: Activity[];
   sources: SourceDocument[];

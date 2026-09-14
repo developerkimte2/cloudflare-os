@@ -21,7 +21,7 @@ function decision(modelName: string): AIDecision {
 function captureResult(overrides: Partial<CaptureResult>): CaptureResult {
   return {
     source: { id: "s1" } as CaptureResult["source"],
-    duplicate: false, nextActions: [], commitments: [], reviews: [], decisions: [],
+    duplicate: false, nextActions: [], commitments: [], reviews: [], decisions: [], suggestions: [],
     ...overrides,
   };
 }
@@ -57,6 +57,8 @@ describe("CaptureResultView", () => {
         onOpenOpportunity={noop}
         onResolveReview={noop}
         onDismissReview={noop}
+        onAdoptSuggestion={noop}
+        onDismissSuggestion={noop}
         onRetry={noop}
       />,
     );
@@ -74,6 +76,8 @@ describe("CaptureResultView", () => {
         onOpenOpportunity={noop}
         onResolveReview={noop}
         onDismissReview={noop}
+        onAdoptSuggestion={noop}
+        onDismissSuggestion={noop}
         onRetry={noop}
       />,
     );
@@ -90,6 +94,8 @@ describe("CaptureResultView", () => {
         onOpenOpportunity={noop}
         onResolveReview={noop}
         onDismissReview={noop}
+        onAdoptSuggestion={noop}
+        onDismissSuggestion={noop}
         onRetry={noop}
       />,
     );

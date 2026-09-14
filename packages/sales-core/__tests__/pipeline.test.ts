@@ -413,6 +413,76 @@ describe("getToday bucketing", () => {
   });
 });
 
+describe("next-action suggestions (below nextActionAutoConfidence)", () => {
+  const lowConfidenceExtraction = extractionJson({
+    next_actions: [{
+      action_type: "CALL", title: "電話で確認", purpose: "状況確認",
+      due_at: null, due_confidence: 0.5, priority: "HIGH", confidence: 0.7, // < nextActionAutoConfidence (0.85)
+    }],
+  });
+
+  it("capture() surfaces a below-threshold proposal as a suggestion instead of discarding it", async () => {
+    const llm = new FakeLlmProvider([lowConfidenceExtraction]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+
+    const result = await svc.capture({ userId: user.id }, "テキスト");
+    expect(result.nextActions).toHaveLength(0);
+    expect(result.suggestions).toHaveLength(1);
+    expect(result.suggestions[0]).toMatchObject({ title: "電話で確認", purpose: "状況確認", priority: "HIGH", confidence: 0.7 });
+
+    const detail = svc.getOpportunity({ userId: user.id }, result.opportunity!.id);
+    expect(detail.suggestions).toHaveLength(1);
+    expect(detail.suggestions[0]!.decisionId).toBe(result.suggestions[0]!.decisionId);
+  });
+
+  it("adoptSuggestion creates a real NextAction and removes it from suggestions", async () => {
+    const llm = new FakeLlmProvider([lowConfidenceExtraction]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const result = await svc.capture({ userId: user.id }, "テキスト");
+    const suggestion = result.suggestions[0]!;
+
+    const adopted = svc.adoptSuggestion({ userId: user.id }, suggestion.decisionId, suggestion.index);
+    expect(adopted).toMatchObject({
+      title: "電話で確認", generatedBy: "AI", status: "OPEN", sourceDecisionId: suggestion.decisionId,
+    });
+
+    const detail = svc.getOpportunity({ userId: user.id }, result.opportunity!.id);
+    expect(detail.nextActions.map(a => a.id)).toContain(adopted.id);
+    expect(detail.suggestions).toHaveLength(0);
+
+    // Adopting the same suggestion twice is refused, not silently duplicated.
+    expect(() => svc.adoptSuggestion({ userId: user.id }, suggestion.decisionId, suggestion.index)).toThrow();
+  });
+
+  it("dismissSuggestion removes it without creating a NextAction", async () => {
+    const llm = new FakeLlmProvider([lowConfidenceExtraction]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const result = await svc.capture({ userId: user.id }, "テキスト");
+    const suggestion = result.suggestions[0]!;
+
+    svc.dismissSuggestion({ userId: user.id }, suggestion.decisionId, suggestion.index);
+
+    const detail = svc.getOpportunity({ userId: user.id }, result.opportunity!.id);
+    expect(detail.suggestions).toHaveLength(0);
+    expect(detail.nextActions).toHaveLength(0);
+  });
+
+  it("refuses to adopt/dismiss a suggestion on an opportunity the caller cannot see", async () => {
+    const llm = new FakeLlmProvider([lowConfidenceExtraction]);
+    const svc = makeService(llm, NOW);
+    const owner = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const outsider = makeUser(svc.repo, "SALES");
+    const result = await svc.capture({ userId: owner.id }, "テキスト");
+    const suggestion = result.suggestions[0]!;
+
+    expect(() => svc.adoptSuggestion({ userId: outsider.id }, suggestion.decisionId, suggestion.index)).toThrow(NotFoundError);
+    expect(() => svc.dismissSuggestion({ userId: outsider.id }, suggestion.decisionId, suggestion.index)).toThrow(NotFoundError);
+  });
+});
+
 describe("customer resolution does not silently reuse an unconfirmed placeholder", () => {
   // 2026-09-14 finding: a real local-LLM batch run showed the AI sometimes echoing the same
   // bogus "company unknown" phrase (or a fabricated company/email) across unrelated captures.

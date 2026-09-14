@@ -9,6 +9,7 @@ import type {
   JsonValue,
   NextAction,
   NextActionInput,
+  NextActionSuggestion,
   OpportunityDetail,
   OpportunityPatch,
   PersonInput,
@@ -29,6 +30,7 @@ import { ConfirmInline } from "../components/ConfirmInline";
 import { CustomerInfo } from "../components/CustomerInfo";
 import { NextActionRow } from "../components/NextActionRow";
 import { ReviewCard } from "../components/ReviewCard";
+import { SuggestionRow } from "../components/SuggestionRow";
 import { formatDate, formatDateTime, isoToLocalInput, localInputToIso } from "../format";
 import { buildOpportunityReport } from "../report";
 import {
@@ -102,6 +104,16 @@ export default function OpportunityDetailPage({
 
   const createNextAction = async (input: NextActionInput) => {
     await runAction(() => api.createNextAction(input), "次アクションの作成に失敗しました");
+    reload();
+  };
+
+  const adoptSuggestion = async (decisionId: string, index: number) => {
+    await runAction(() => api.adoptSuggestion(decisionId, index), "提案の採用に失敗しました");
+    reload();
+  };
+
+  const dismissSuggestion = async (decisionId: string, index: number) => {
+    await runAction(() => api.dismissSuggestion(decisionId, index), "提案の却下に失敗しました");
     reload();
   };
 
@@ -204,9 +216,12 @@ export default function OpportunityDetailPage({
       <NextActionsSection
         opportunityId={opportunityId}
         actions={data.nextActions}
+        suggestions={data.suggestions}
         timezone={timezone}
         onUpdate={updateNextAction}
         onCreate={createNextAction}
+        onAdoptSuggestion={adoptSuggestion}
+        onDismissSuggestion={dismissSuggestion}
       />
 
       <CommitmentsSection commitments={data.commitments} timezone={timezone} onUpdate={updateCommitment} />
@@ -588,15 +603,21 @@ function MiniList({ label, items }: { label: string; items: string[] }) {
 function NextActionsSection({
   opportunityId,
   actions,
+  suggestions,
   timezone,
   onUpdate,
   onCreate,
+  onAdoptSuggestion,
+  onDismissSuggestion,
 }: {
   opportunityId: string;
   actions: NextAction[];
+  suggestions: NextActionSuggestion[];
   timezone: string;
   onUpdate: (id: string, patch: Parameters<SalesManagementApi["updateNextAction"]>[1]) => void | Promise<void>;
   onCreate: (input: NextActionInput) => void | Promise<void>;
+  onAdoptSuggestion: (decisionId: string, index: number) => void | Promise<void>;
+  onDismissSuggestion: (decisionId: string, index: number) => void | Promise<void>;
 }) {
   const now = new Date();
   const open = actions.filter((a) => a.status === "OPEN" || a.status === "SNOOZED");
@@ -625,6 +646,20 @@ function NextActionsSection({
             setAdding(false);
           }}
         />
+      )}
+      {suggestions.length > 0 && (
+        <div className="mb-3 space-y-1.5">
+          {suggestions.map((suggestion) => (
+            <SuggestionRow
+              key={`${suggestion.decisionId}:${suggestion.index}`}
+              suggestion={suggestion}
+              timezone={timezone}
+              now={now}
+              onAdopt={() => onAdoptSuggestion(suggestion.decisionId, suggestion.index)}
+              onDismiss={() => onDismissSuggestion(suggestion.decisionId, suggestion.index)}
+            />
+          ))}
+        </div>
       )}
       {open.length === 0 && done.length === 0 ? (
         <p className="text-sm text-kumo-subtle">次アクションはありません。</p>

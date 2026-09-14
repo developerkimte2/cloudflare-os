@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 // `node:sqlite` into the browser bundle (FB_20260908 D).
 import { splitCaptureText } from "@gadgets/sales-core/pipeline/split";
 import { looksLikeQuestion } from "@gadgets/sales-core/pipeline/ask";
-import type { AnswerResult, CaptureOptions, CaptureResult, WhoAmI } from "../../src/management-types";
+import type { AnswerResult, CaptureOptions, CaptureResult, NextAction, WhoAmI } from "../../src/management-types";
 import { localInputToIso } from "../format";
 import { AnswerView } from "./AnswerView";
 import { BatchCaptureView } from "./BatchCaptureView";
@@ -39,6 +39,8 @@ export function CaptureBox({
   onOpenOpportunity,
   onResolveReview,
   onDismissReview,
+  onAdoptSuggestion,
+  onDismissSuggestion,
 }: {
   timezone: string;
   ai: WhoAmI["ai"];
@@ -51,6 +53,8 @@ export function CaptureBox({
   onOpenOpportunity: (opportunityId: string) => void;
   onResolveReview: (id: string, optionId: string, input?: Record<string, unknown>) => void | Promise<void>;
   onDismissReview: (id: string) => void | Promise<void>;
+  onAdoptSuggestion: (decisionId: string, index: number) => Promise<NextAction | undefined>;
+  onDismissSuggestion: (decisionId: string, index: number) => void | Promise<void>;
 }) {
   const [text, setText] = useState("");
   const [showOptions, setShowOptions] = useState(false);
@@ -115,6 +119,26 @@ export function CaptureBox({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Wraps the parent's API call to also drop the suggestion from this inline result once it's
+  // handled — without this the row would keep showing 採用/却下 after already being resolved.
+  const adoptSuggestion = async (decisionId: string, index: number) => {
+    const created = await onAdoptSuggestion(decisionId, index);
+    if (!created) return;
+    setResult((current) => current && {
+      ...current,
+      suggestions: current.suggestions.filter((s) => !(s.decisionId === decisionId && s.index === index)),
+      nextActions: [...current.nextActions, created],
+    });
+  };
+
+  const dismissSuggestion = async (decisionId: string, index: number) => {
+    await onDismissSuggestion(decisionId, index);
+    setResult((current) => current && {
+      ...current,
+      suggestions: current.suggestions.filter((s) => !(s.decisionId === decisionId && s.index === index)),
+    });
   };
 
   const runAsk = async (question: string) => {
@@ -348,6 +372,8 @@ export function CaptureBox({
           onOpenOpportunity={onOpenOpportunity}
           onResolveReview={onResolveReview}
           onDismissReview={onDismissReview}
+          onAdoptSuggestion={adoptSuggestion}
+          onDismissSuggestion={dismissSuggestion}
           onRetry={() => void runCapture(lastText, lastOptions)}
         />
       )}

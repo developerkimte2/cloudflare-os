@@ -486,6 +486,8 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   listNextActions(filter?: NextActionFilter): Promise<NextAction[]> { return this.core.listNextActions(this.caller, filter); }
   createNextAction(input: NextActionInput): Promise<NextAction> { return this.core.createNextAction(this.caller, input); }
   updateNextAction(id: string, patch: NextActionPatch): Promise<NextAction> { return this.core.updateNextAction(this.caller, id, patch); }
+  adoptSuggestion(decisionId: string, index: number): Promise<NextAction> { return this.core.adoptSuggestion(this.caller, decisionId, index); }
+  dismissSuggestion(decisionId: string, index: number): Promise<void> { return this.core.dismissSuggestion(this.caller, decisionId, index); }
   updateCommitment(id: string, patch: { status?: Commitment["status"]; dueAt?: string | null }): Promise<Commitment> { return this.core.updateCommitment(this.caller, id, patch); }
   listReviews(): Promise<ReviewDto[]> { return this.core.listReviews(this.caller); }
   resolveReview(id: string, resolution: ReviewResolution): Promise<ReviewDto> { return this.core.resolveReview(this.caller, id, resolution); }

@@ -67,6 +67,17 @@ export default function TodayPage({
     refresh();
   };
 
+  const adoptSuggestion = async (decisionId: string, index: number) => {
+    const created = await runAction(() => api.adoptSuggestion(decisionId, index), "提案の採用に失敗しました");
+    refresh();
+    return created;
+  };
+
+  const dismissSuggestion = async (decisionId: string, index: number) => {
+    await runAction(() => api.dismissSuggestion(decisionId, index), "提案の却下に失敗しました");
+    refresh();
+  };
+
   const capture = async (text: string, options?: CaptureOptions) => {
     const result = await runAction(() => api.capture(text, options), "取り込みに失敗しました");
     refresh();
@@ -132,6 +143,8 @@ export default function TodayPage({
           onOpenOpportunity={onOpenOpportunity}
           onResolveReview={resolveReview}
           onDismissReview={dismissReview}
+          onAdoptSuggestion={adoptSuggestion}
+          onDismissSuggestion={dismissSuggestion}
         />
       </div>
 
@@ -242,6 +255,8 @@ export default function TodayPage({
                     onOpenOpportunity={onOpenOpportunity}
                     onResolveReview={resolveReview}
                     onDismissReview={dismissReview}
+                    onAdoptSuggestion={adoptSuggestion}
+                    onDismissSuggestion={dismissSuggestion}
                     onRetry={() => void retryCapture(source.id)}
                   />
                 )}

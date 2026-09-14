@@ -5,14 +5,15 @@
  */
 import type {
   AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
-  CustomerDetail, ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
-  RegisterIdentityInput, ReviewDto, ReviewResolution, TodayAction, TodayView, UserDto,
+  CustomerDetail, ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch,
+  NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary,
+  PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution, TodayAction, TodayView,
+  UserDto,
 } from "../api/dto.js";
 import { toUserDto } from "../api/dto.js";
 import type {
-  Commitment, CustomerAccount, CustomerPerson, JsonValue, LifecycleState, NextAction, Opportunity,
-  ReviewItem, SourceDocument, User, UserRole,
+  AIDecision, Commitment, CustomerAccount, CustomerPerson, JsonValue, LifecycleState, NextAction,
+  NextActionType, Opportunity, Priority, ReviewItem, SourceDocument, User, UserRole,
 } from "../domain/types.js";
 import {
   addDays, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso,
@@ -255,6 +256,7 @@ export class SalesService {
       commitments: (app?.createdCommitmentIds ?? []).map(id => this.repo.getCommitment(id)).filter(isDefined),
       reviews: this.repo.listReviewsForSource(sourceId).map(r => this.reviewDto(r)),
       decisions,
+      suggestions: nextActionSuggestions(decisions),
       notSalesRelated: decisions.some(d => (d.proposedJson as { not_sales_related?: boolean })?.not_sales_related === true),
       error: source.processingError,
     };
@@ -370,16 +372,18 @@ export class SalesService {
     const o = this.repo.getOpportunity(id);
     if (!o || !this.canSee(user, o)) throw new NotFoundError("案件");
     const account = this.repo.getAccount(o.accountId)!;
+    const decisions = this.repo.listDecisionsForEntity("opportunity", id);
     return {
       ...this.summarize(o),
       account,
       persons: this.repo.listPersonsForAccount(account.id),
       context: this.repo.latestSnapshot(id),
       nextActions: this.repo.listNextActionsForOpportunity(id),
+      suggestions: nextActionSuggestions(decisions),
       commitments: this.repo.listCommitmentsForOpportunity(id),
       activities: this.repo.listActivitiesForOpportunity(id),
       sources: this.repo.listSourcesForOpportunity(id),
-      decisions: this.repo.listDecisionsForEntity("opportunity", id),
+      decisions,
       reviews: this.repo.listReviews("OPEN").filter(r => this.reviewOpportunityId(r) === id).map(r => this.reviewDto(r)),
       audit: this.repo.listAuditForEntity("opportunity", id),
     };
@@ -585,6 +589,66 @@ export class SalesService {
         entityType: "next_action", entityId: id, before: action, after: next });
     });
     return next;
+  }
+
+  /**
+   * Adopts a NEXT_ACTION suggestion the AI proposed but didn't create (confidence below
+   * nextActionAutoConfidence, so it sat in the decision's appliedJson.skipped instead of becoming a
+   * real NextAction). The human decides; that's the whole point of surfacing it instead of silently
+   * discarding it.
+   */
+  adoptSuggestion(actor: Actor, decisionId: string, index: number): NextAction {
+    const user = this.requireUser(actor);
+    const { decision, opportunity, raw, applied } = this.requireSuggestion(user, decisionId, index);
+    const now = nowIso(this.ctx.clock);
+    const action: NextAction = {
+      id: newId(), opportunityId: opportunity.id, assignedUserId: user.id,
+      actionType: raw.action_type ?? "OTHER", title: raw.title, purpose: raw.purpose ?? "",
+      dueAt: isIsoDateTime(raw.due_at) ? new Date(raw.due_at).toISOString() : undefined,
+      priority: raw.priority ?? "NORMAL", status: "OPEN", generatedBy: "AI",
+      sourceDecisionId: decisionId, recommendedAt: decision.createdAt, createdAt: now, updatedAt: now,
+    };
+    this.repo.transaction(() => {
+      this.repo.insertNextAction(action);
+      this.repo.updateDecision({
+        ...decision,
+        appliedJson: { ...applied, adopted: [...(applied.adopted ?? []), index] } as unknown as JsonValue,
+      });
+      this.refreshNextActionPointer(opportunity.id);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "NEXT_ACTION_CREATED",
+        entityType: "next_action", entityId: action.id, after: action,
+        sourceIds: decision.inputSourceIds });
+    });
+    return action;
+  }
+
+  dismissSuggestion(actor: Actor, decisionId: string, index: number): void {
+    const user = this.requireUser(actor);
+    const { decision, opportunity, applied } = this.requireSuggestion(user, decisionId, index);
+    this.repo.updateDecision({
+      ...decision,
+      appliedJson: { ...applied, dismissed: [...(applied.dismissed ?? []), index] } as unknown as JsonValue,
+    });
+    audit(this.ctx, { actorType: "USER", actorId: user.id, action: "SUGGESTION_DISMISSED",
+      entityType: "opportunity", entityId: opportunity.id, before: { decisionId, index } });
+  }
+
+  /** Shared lookup + guards for adoptSuggestion/dismissSuggestion. */
+  private requireSuggestion(user: User, decisionId: string, index: number): {
+    decision: AIDecision; opportunity: Opportunity; applied: NextActionDecisionApplied;
+    raw: NextActionSuggestionRaw;
+  } {
+    const decision = this.repo.getDecision(decisionId);
+    if (!decision || decision.decisionType !== "NEXT_ACTION") throw new NotFoundError("提案");
+    const opportunity = this.repo.getOpportunity(decision.entityId);
+    if (!opportunity || !this.canSee(user, opportunity)) throw new NotFoundError("提案");
+    const applied = (decision.appliedJson ?? {}) as NextActionDecisionApplied;
+    const raw = applied.skipped?.[index];
+    if (!raw?.title) throw new NotFoundError("提案");
+    if (applied.adopted?.includes(index) || applied.dismissed?.includes(index)) {
+      throw new Error("この提案は既に処理されています");
+    }
+    return { decision, opportunity, applied, raw };
   }
 
   // ---- commitments ---------------------------------------------------------------------------------
@@ -967,6 +1031,45 @@ export class SalesService {
       if (!open) this.repo.updateSource({ ...source, processingStatus: "PROCESSED" });
     }
   }
+}
+
+/** A raw `next_actions[]` entry from the extraction JSON, as stored in appliedJson.skipped. */
+interface NextActionSuggestionRaw {
+  action_type?: NextActionType;
+  title: string;
+  purpose?: string;
+  due_at?: string | null;
+  priority?: Priority;
+  confidence?: number;
+}
+
+/** Shape of a NEXT_ACTION decision's appliedJson (see pipeline/ingest.ts "5. Next actions"). */
+interface NextActionDecisionApplied {
+  nextActionIds?: string[];
+  skipped?: NextActionSuggestionRaw[];
+  /** Indices into `skipped` already turned into a real NextAction or explicitly dismissed. */
+  adopted?: number[];
+  dismissed?: number[];
+}
+
+/** Suggestions still pending a human decision, across every NEXT_ACTION decision given. */
+function nextActionSuggestions(decisions: AIDecision[]): NextActionSuggestion[] {
+  const suggestions: NextActionSuggestion[] = [];
+  for (const d of decisions) {
+    if (d.decisionType !== "NEXT_ACTION") continue;
+    const applied = (d.appliedJson ?? {}) as NextActionDecisionApplied;
+    (applied.skipped ?? []).forEach((raw, index) => {
+      if (!raw?.title) return;
+      if (applied.adopted?.includes(index) || applied.dismissed?.includes(index)) return;
+      suggestions.push({
+        decisionId: d.id, index,
+        actionType: raw.action_type ?? "OTHER", title: raw.title, purpose: raw.purpose ?? "",
+        dueAt: isIsoDateTime(raw.due_at) ? new Date(raw.due_at).toISOString() : undefined,
+        priority: raw.priority ?? "NORMAL", confidence: raw.confidence ?? 0, createdAt: d.createdAt,
+      });
+    });
+  }
+  return suggestions;
 }
 
 function isDefined<T>(v: T | undefined | null): v is T {

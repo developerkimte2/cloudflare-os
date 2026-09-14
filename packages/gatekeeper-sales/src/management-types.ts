@@ -9,17 +9,19 @@
 import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerSummary, NextAction,
-  NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter,
-  OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto,
-  ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
+  NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
+  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
+  RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
+  TodayView, UserDto,
 } from "@gadgets/sales-core";
 
 export type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerSummary, NextAction,
-  NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter,
-  OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto,
-  ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
+  NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
+  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
+  RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
+  TodayView, UserDto,
 };
 
 /** What the app learns about the caller on load. */
@@ -74,6 +76,9 @@ export interface SalesManagementApi {
   listNextActions(filter?: NextActionFilter): Promise<NextAction[]>;
   createNextAction(input: NextActionInput): Promise<NextAction>;
   updateNextAction(id: string, patch: NextActionPatch): Promise<NextAction>;
+  /** Turns a below-threshold AI-proposed next action (see CaptureResult/OpportunityDetail.suggestions) into a real one. */
+  adoptSuggestion(decisionId: string, index: number): Promise<NextAction>;
+  dismissSuggestion(decisionId: string, index: number): Promise<void>;
   updateCommitment(id: string, patch: { status?: Commitment["status"]; dueAt?: string | null }): Promise<Commitment>;
 
   listReviews(): Promise<ReviewDto[]>;

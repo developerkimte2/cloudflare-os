@@ -249,6 +249,14 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
     return this.#service.updateNextAction(this.#actor(caller), id, patch);
   }
 
+  async adoptSuggestion(caller: Caller, decisionId: string, index: number): Promise<NextAction> {
+    return this.#service.adoptSuggestion(this.#actor(caller), decisionId, index);
+  }
+
+  async dismissSuggestion(caller: Caller, decisionId: string, index: number): Promise<void> {
+    return this.#service.dismissSuggestion(this.#actor(caller), decisionId, index);
+  }
+
   async updateCommitment(
     caller: Caller, id: string, patch: { status?: Commitment["status"]; dueAt?: string | null },
   ): Promise<Commitment> {

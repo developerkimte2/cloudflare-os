@@ -3,6 +3,7 @@ import { ACTIVITY_TYPE_LABEL } from "../labels";
 import { AiAttribution } from "./AiAttribution";
 import { Badge } from "./Badges";
 import { ReviewCard } from "./ReviewCard";
+import { SuggestionRow } from "./SuggestionRow";
 
 export function CaptureResultView({
   result,
@@ -11,6 +12,8 @@ export function CaptureResultView({
   onOpenOpportunity,
   onResolveReview,
   onDismissReview,
+  onAdoptSuggestion,
+  onDismissSuggestion,
   onRetry,
 }: {
   result: CaptureResult;
@@ -19,6 +22,8 @@ export function CaptureResultView({
   onOpenOpportunity: (opportunityId: string) => void;
   onResolveReview: (id: string, optionId: string, input?: Record<string, unknown>) => void | Promise<void>;
   onDismissReview: (id: string) => void | Promise<void>;
+  onAdoptSuggestion: (decisionId: string, index: number) => void | Promise<void>;
+  onDismissSuggestion: (decisionId: string, index: number) => void | Promise<void>;
   onRetry: () => void | Promise<void>;
 }) {
   if (result.error) {
@@ -75,6 +80,21 @@ export function CaptureResultView({
               <li key={action.id}>{action.title}</li>
             ))}
           </ul>
+        </div>
+      )}
+      {result.suggestions.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-kumo-subtle">AI の提案（未確定）</p>
+          {result.suggestions.map((suggestion) => (
+            <SuggestionRow
+              key={`${suggestion.decisionId}:${suggestion.index}`}
+              suggestion={suggestion}
+              timezone={timezone}
+              now={new Date()}
+              onAdopt={() => onAdoptSuggestion(suggestion.decisionId, suggestion.index)}
+              onDismiss={() => onDismissSuggestion(suggestion.decisionId, suggestion.index)}
+            />
+          ))}
         </div>
       )}
       {result.commitments.length > 0 && (
