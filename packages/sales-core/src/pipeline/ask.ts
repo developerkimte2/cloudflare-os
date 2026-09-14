@@ -9,10 +9,11 @@ import { normalizeName } from "../domain/util.js";
 
 const QUESTION_KEYWORDS = [
   "状況", "どうなっている", "どうなってる", "どうなった", "進捗", "ステータス",
-  // A request directed at the assistant ("ABC社の情報を教えてほしい") rather than a report of a
-  // customer interaction -- without this, it falls through to a capture and the AI, seeing a real
-  // company name in the text, creates a phantom opportunity for it (2026-09-14 finding).
-  "教えて", "知りたい",
+  // A request directed at the assistant ("ABC社の情報を教えてほしい"/"...おしえて") rather than a report
+  // of a customer interaction -- without this, it falls through to a capture and the AI, seeing a
+  // real company name in the text, creates a phantom opportunity for it (2026-09-14 finding). Both
+  // the kanji and hiragana spellings are listed since either is common in casual typed input.
+  "教えて", "おしえて", "知りたい", "しりたい",
 ];
 
 /** Above this length, treat the text as a capture even if it happens to contain a question mark. */

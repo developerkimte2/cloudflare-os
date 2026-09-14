@@ -29,6 +29,11 @@ describe("looksLikeQuestion", () => {
     expect(looksLikeQuestion("ABC社の担当者を知りたい")).toBe(true);
   });
 
+  it("recognizes the hiragana spelling of the same request phrasing", () => {
+    expect(looksLikeQuestion("山田商事の情報をおしえて")).toBe(true);
+    expect(looksLikeQuestion("ABC社の担当者をしりたい")).toBe(true);
+  });
+
   it("handles empty text without throwing", () => {
     expect(looksLikeQuestion("")).toBe(false);
     expect(looksLikeQuestion("   ")).toBe(false);
