@@ -34,6 +34,33 @@ export interface AccountResolution {
   mentionedCompanyName?: string;
   /** Persons mentioned that did not match an existing record. */
   unmatchedPersons: Extraction["entities"]["person_candidates"];
+  /**
+   * account_candidates / person.company values dropped by looksLikeCompanyName (a meta-phrase like
+   * "会社名は聞きそびれた", or a person's own name/honorific) — kept only for diagnostics.
+   */
+  rejectedNames: string[];
+}
+
+const NON_COMPANY_PUNCTUATION = /[。、！？!?]/;
+const NON_COMPANY_PHRASE = /(不明|聞きそびれ|未定|わからない|分からない|未確認|なし|失念)/;
+const NON_COMPANY_PREFIX = /^(会社名|社名|顧客名|お客様|先方)/;
+const PERSON_HONORIFIC_SUFFIX = /(様|さん|殿)$/;
+
+/**
+ * True when `name` plausibly is a company name. False for the extractor's observed failure modes
+ * (2026-09-14 batch test #4/#15/#16): a "company unknown" meta-phrase, or a person's own name (with
+ * or without an honorific) echoed back as if it were the company — both otherwise sail straight
+ * into account_candidates and can create or match a placeholder account under that literal string.
+ */
+export function looksLikeCompanyName(name: string, personNames: string[]): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 40) return false;
+  if (NON_COMPANY_PUNCTUATION.test(trimmed)) return false;
+  if (NON_COMPANY_PHRASE.test(trimmed)) return false;
+  if (NON_COMPANY_PREFIX.test(trimmed)) return false;
+  if (PERSON_HONORIFIC_SUFFIX.test(trimmed)) return false;
+  const normalized = normalizeName(trimmed);
+  return !personNames.some(p => normalizeName(p) === normalized);
 }
 
 /**
@@ -53,8 +80,21 @@ export function resolveEntities(
   extraction: Extraction,
   config: SalesConfig,
 ): AccountResolution {
-  const persons = extraction.entities.person_candidates;
-  const accounts = extraction.entities.account_candidates;
+  const rawPersons = extraction.entities.person_candidates;
+  const personNames = rawPersons.map(p => p.name);
+  const rejectedNames: string[] = [];
+  const accounts = extraction.entities.account_candidates.filter(a => {
+    if (looksLikeCompanyName(a.name, personNames)) return true;
+    rejectedNames.push(a.name);
+    return false;
+  });
+  // A person's own `company` field goes through the same guard, so a bogus value can't leak into
+  // mentionedCompanyName via that path either.
+  const persons = rawPersons.map(p => {
+    if (!p.company || looksLikeCompanyName(p.company, personNames)) return p;
+    rejectedNames.push(p.company);
+    return { ...p, company: null };
+  });
   const mentionedCompanyName = accounts[0]?.name ?? persons.find(p => p.company)?.company ?? undefined;
 
   // 1. email exact match → person → account
@@ -115,8 +155,16 @@ export function resolveEntities(
   const fuzzy = uniqueById(accounts.flatMap(a => repo.findAccountCandidates(a.name)));
   const strongest = accounts[0];
   if (fuzzy.length === 0) {
-    return finish("NONE", strongest ? strongest.confidence : 0, undefined, [], accounts.length > 0,
-      accounts.length > 0 ? "既存顧客に該当なし (新規リードの可能性)" : "本文に顧客名が含まれていない",
+    // A person mentioned without a company (including one looksLikeCompanyName rejected, e.g. the
+    // 会社名は聞きそびれた case) is still a real sales signal worth a human's "which customer?" —
+    // only a genuinely empty mention (a lunch order, small talk) should sail through without one.
+    const hasSignal = accounts.length > 0 || persons.length > 0;
+    return finish("NONE", strongest ? strongest.confidence : 0, undefined, [], hasSignal,
+      accounts.length > 0
+        ? "既存顧客に該当なし (新規リードの可能性)"
+        : persons.length > 0
+          ? "担当者は分かるが顧客の会社が特定できない"
+          : "本文に顧客名が含まれていない",
       []);
   }
   return finish("NONE", 0.5, undefined, [], true, "表記揺れの可能性がある候補が存在", fuzzy);
@@ -139,6 +187,7 @@ export function resolveEntities(
       candidates,
       mentionedCompanyName,
       unmatchedPersons: persons.filter(p => !matchedIds.has(normalizeName(p.name))),
+      rejectedNames,
     };
   }
 }

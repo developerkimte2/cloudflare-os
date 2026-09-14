@@ -297,11 +297,19 @@ function applyExtraction(
         resolution.confidence, resolution.needsReview ? "REVIEW_REQUIRED" : "AUTO_APPLIED",
         resolution.reason, x.entities);
       if (resolution.needsReview) {
+        // Quotes the rep's own memo rather than asserting the AI-guessed name as fact — that name
+        // can itself be wrong (a fabricated company, or the AI echoing a "company unknown" phrase
+        // back as if it were one; looksLikeCompanyName only catches the latter).
+        const excerpt = memoExcerpt(source.rawText);
+        const question = resolution.candidates.length > 0
+          ? resolution.mentionedCompanyName
+            ? `メモ「${excerpt}」の顧客は「${resolution.mentionedCompanyName}」でよいですか？ 似た登録があります。`
+            : `メモ「${excerpt}」はどの顧客ですか？ 似た登録があります。`
+          : resolution.mentionedCompanyName
+            ? `メモ「${excerpt}」の顧客「${resolution.mentionedCompanyName}」はまだ登録がありません。新しい顧客として登録しますか？`
+            : `メモ「${excerpt}」の顧客が分かりません。どの顧客の話ですか？`;
         review({
-          type: "CUSTOMER_AMBIGUOUS",
-          question: resolution.candidates.length > 0
-            ? `「${placeholder.displayName}」はどの顧客ですか？ (${resolution.reason})`
-            : `「${placeholder.displayName}」は既存顧客に見つかりません。新規顧客として登録しますか？`,
+          type: "CUSTOMER_AMBIGUOUS", question,
           options: customerReviewOptions(resolution, placeholder.id),
         }, "customer_account", placeholder.id).id;
         void d;
@@ -545,6 +553,16 @@ function applyExtraction(
     reviewIds: reviews.map(r => r.id), nextActionIds, commitmentIds,
     model: meta.modelName, repairs: meta.repairs,
   };
+}
+
+/**
+ * A short, single-line quote of the raw memo for review questions (設計書 §13.4 / 2026-09-14
+ * finding): the question should show the sales rep their own words, not an AI-guessed name that
+ * might itself be wrong (a hallucinated company, or a "company unknown" phrase mistaken for one).
+ */
+function memoExcerpt(rawText: string | undefined, max = 60): string {
+  const flat = (rawText ?? "").replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
 
 function defaultTitle(account: CustomerAccount, x: Extraction): string {

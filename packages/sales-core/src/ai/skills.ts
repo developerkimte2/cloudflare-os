@@ -12,7 +12,7 @@ import { formatDateTimeJa, formatLocal } from "../domain/util.js";
 import { contextSnapshotSchema, extractionSchema, jsonSchemaOf } from "./schema.js";
 import type { LlmRequest } from "./provider.js";
 
-export const EXTRACTION_PROMPT_VERSION = "extract.v1";
+export const EXTRACTION_PROMPT_VERSION = "extract.v2";
 export const CONTEXT_PROMPT_VERSION = "context.v1";
 export const ANSWER_PROMPT_VERSION = "answer.v4";
 
@@ -96,6 +96,9 @@ export function buildExtractionRequest(input: ExtractionInput): LlmRequest {
     "6. 予定のキャンセル・延期は失注ではない。",
     "7. 既存の open opportunities の一覧に該当する案件があれば match=EXISTING と existing_opportunity_id を返す。無ければ NEW と title。判断できなければ UNKNOWN。",
     "8. 顧客 (account) と担当者 (person) は本文中の表記のまま候補として出す。known accounts に一致しそうなものがあっても名寄せの確定はシステム側で行うので、name は本文の表記を使う。",
+    "8-1. 本文に会社名の手がかりが一切ない場合は account_candidates を空配列にする。「会社名不明」「聞きそびれた」のような" +
+      "本文の説明文や、担当者の氏名・敬称を会社名として書かない。known accounts に載っている情報 (メールアドレス等) を、" +
+      "本文に書かれていないのに person_candidates に書き写さない。",
     "9. 次アクションは営業担当者が実際に行う具体的な行動にする (「フォローする」ではなく「稟議結果を電話で確認する」)。",
     "10. 営業と無関係な入力 (挨拶・雑談・テストなど) は not_sales_related=true にし、他の項目は最小限にする。",
     "11. facts / decisions / commitments の evidence には本文からの短い引用を入れる。",

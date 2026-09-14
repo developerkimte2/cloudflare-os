@@ -3,7 +3,7 @@ import { NodeSqliteExecutor } from "../src/db/node-sqlite.js";
 import { migrate } from "../src/db/migrations.js";
 import { Repository } from "../src/db/repository.js";
 import { DEFAULT_CONFIG } from "../src/rules/config.js";
-import { customerReviewOptions, resolveEntities } from "../src/rules/entity-resolution.js";
+import { customerReviewOptions, looksLikeCompanyName, resolveEntities } from "../src/rules/entity-resolution.js";
 import { extractionSchema, type Extraction } from "../src/ai/schema.js";
 import type { CustomerAccount, CustomerPerson } from "../src/domain/types.js";
 import { newId, normalizeName } from "../src/domain/util.js";
@@ -207,6 +207,51 @@ describe("resolveEntities", () => {
     const res = resolveEntities(repo, x, DEFAULT_CONFIG);
     expect(res.unmatchedPersons.map(p => p.name)).toEqual(["新しい人"]);
   });
+
+  it("rejects a 'company unknown' meta-phrase as a company name (2026-09-14 finding)", () => {
+    const x = baseExtraction({
+      accounts: [{ name: "会社名は聞きそびれた" }],
+      persons: [{ name: "鈴木" }],
+    });
+    const res = resolveEntities(repo, x, DEFAULT_CONFIG);
+    expect(res.method).toBe("NONE");
+    expect(res.mentionedCompanyName).toBeUndefined();
+    expect(res.rejectedNames).toEqual(["会社名は聞きそびれた"]);
+  });
+
+  it("rejects a person.company value that is itself a rejected string", () => {
+    const x = baseExtraction({ persons: [{ name: "鈴木", company: "会社名不明" }] });
+    const res = resolveEntities(repo, x, DEFAULT_CONFIG);
+    expect(res.mentionedCompanyName).toBeUndefined();
+    expect(res.rejectedNames).toEqual(["会社名不明"]);
+  });
+});
+
+describe("looksLikeCompanyName", () => {
+  const cases: Array<[string, string, boolean]> = [
+    ["typical company name", "ABC株式会社", true],
+    ["company name with legal form in parens", "(株)グリーンフィールズ", true],
+    ["plain-looking company name", "ABC Systems", true],
+    ["empty string", "", false],
+    ["too long (> 40 chars)", "あ".repeat(41), false],
+    ["contains a sentence-ending punctuation mark", "会社名は不明です。", false],
+    ["contains a question mark", "どこの会社？", false],
+    ["'not sure' meta-phrase", "会社名は聞きそびれた", false],
+    ["'undecided' meta-phrase", "未定", false],
+    ["'don't know' meta-phrase", "わからない", false],
+    ["starts with '会社名'", "会社名不明", false],
+    ["starts with '先方'", "先方の会社", false],
+    ["ends with 様", "山田太郎様", false],
+    ["ends with さん", "鈴木さん", false],
+  ];
+  it.each(cases)("%s: %j -> %s", (_label, name, expected) => {
+    expect(looksLikeCompanyName(name, [])).toBe(expected);
+  });
+
+  it("rejects a name that is actually one of the mentioned persons", () => {
+    expect(looksLikeCompanyName("山田太郎", ["山田太郎"])).toBe(false);
+    expect(looksLikeCompanyName("ABC株式会社", ["山田太郎"])).toBe(true);
+  });
 });
 
 describe("customerReviewOptions", () => {
@@ -217,7 +262,7 @@ describe("customerReviewOptions", () => {
     const resolution = {
       account: undefined, persons: [], method: "NONE" as const, confidence: 0.5, needsReview: true,
       reason: "test", candidates: [candidate, placeholderAsCandidate], mentionedCompanyName: "ABC株式会社",
-      unmatchedPersons: [],
+      unmatchedPersons: [], rejectedNames: [],
     };
     const options = customerReviewOptions(resolution, placeholderId);
     expect(options.map(o => o.id)).toEqual(["account:acc-1", "new", "none"]);
@@ -232,6 +277,7 @@ describe("customerReviewOptions", () => {
     const resolution = {
       account: undefined, persons: [], method: "NONE" as const, confidence: 0, needsReview: false,
       reason: "test", candidates: [], mentionedCompanyName: undefined, unmatchedPersons: [],
+      rejectedNames: [],
     };
     const options = customerReviewOptions(resolution, "placeholder-1");
     expect(options.map(o => o.id)).toEqual(["new", "none"]);

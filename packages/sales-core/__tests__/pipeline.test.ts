@@ -483,13 +483,54 @@ describe("next-action suggestions (below nextActionAutoConfidence)", () => {
   });
 });
 
+describe("CUSTOMER_AMBIGUOUS question wording quotes the memo, not the AI's guessed name", () => {
+  it("company-less mention: quotes the memo and does not assert a name as the customer", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      // The extractor did the 2026-09-14-observed thing: echoed a "company unknown" phrase back
+      // as the company. looksLikeCompanyName strips it before it can appear in the question.
+      accounts: [{ name: "会社名は聞きそびれた", confidence: 0.6 }],
+      persons: [{ name: "鈴木", confidence: 0.6 }],
+      opportunity: { match: "NEW", confidence: 0.6 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+
+    const text = "新規のお問い合わせ。会社名は聞きそびれた。担当者名は鈴木さん。";
+    const result = await svc.capture({ userId: user.id }, text);
+    const review = result.reviews.find(r => r.type === "CUSTOMER_AMBIGUOUS")!;
+    // The memo itself is quoted verbatim (so it naturally still contains the rep's own words) — what
+    // must NOT happen is the system asserting that phrase as a determined company name.
+    expect(review.question).toBe(`メモ「${text}」の顧客が分かりません。どの顧客の話ですか？`);
+    expect(review.question).not.toContain("」は既存顧客に見つかりません");
+  });
+
+  it("a plausible but unmatched company name is quoted as the AI's guess, not stated as fact", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      accounts: [{ name: "テスト商事", confidence: 0.6 }],
+      persons: [{ name: "田中", company: "テスト商事", confidence: 0.6 }],
+      opportunity: { match: "NEW", confidence: 0.6 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+
+    const text = "テスト商事の田中さんから初めて連絡があった。";
+    const result = await svc.capture({ userId: user.id }, text);
+    const review = result.reviews.find(r => r.type === "CUSTOMER_AMBIGUOUS")!;
+    expect(review.question).toContain(text.slice(0, 60));
+    expect(review.question).toContain("テスト商事");
+    expect(review.question).toContain("まだ登録がありません");
+  });
+});
+
 describe("customer resolution does not silently reuse an unconfirmed placeholder", () => {
-  // 2026-09-14 finding: a real local-LLM batch run showed the AI sometimes echoing the same
-  // bogus "company unknown" phrase (or a fabricated company/email) across unrelated captures.
-  // Because that phrase happened to exact-match an UNRESOLVED placeholder from an earlier
-  // unrelated capture, COMPANY_AND_PERSON silently merged two unrelated leads with no review.
+  // 2026-09-14 finding: a real local-LLM batch run showed the AI sometimes fabricating a
+  // plausible-looking company name across unrelated captures (the looksLikeCompanyName guard added
+  // afterward catches the *meta-phrase* variant of this — see the "customer question wording" tests
+  // below — but a normal-looking invented name like this one sails right through it). Because the
+  // string happened to exact-match an UNRESOLVED placeholder from an earlier unrelated capture,
+  // COMPANY_AND_PERSON silently merged two unrelated leads with no review.
   it("asks again instead of merging, then trusts the account once a human confirms it", async () => {
-    const bogusCompany = "会社名不明";
+    const bogusCompany = "山田商事";
     const extraction = (personName: string) => extractionJson({
       accounts: [{ name: bogusCompany, confidence: 0.6 }],
       persons: [{ name: personName, company: bogusCompany, confidence: 0.6 }],
@@ -501,7 +542,7 @@ describe("customer resolution does not silently reuse an unconfirmed placeholder
     const actor = { userId: user.id };
 
     // 1st capture: nothing exists yet → new UNRESOLVED placeholder + review, as always.
-    const first = await svc.capture(actor, "新規のお問い合わせ。会社名不明。担当者名は鈴木さん。");
+    const first = await svc.capture(actor, "新規のお問い合わせ。山田商事、担当者名は鈴木さん。");
     expect(first.source.processingStatus).toBe("REVIEW_REQUIRED");
     const account1Id = first.opportunity!.accountId;
     expect(svc.repo.getAccount(account1Id)!.resolutionStatus).toBe("UNRESOLVED");
