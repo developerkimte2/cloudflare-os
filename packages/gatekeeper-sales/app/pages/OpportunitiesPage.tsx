@@ -159,7 +159,9 @@ export default function OpportunitiesPage({
                   <Td className="max-w-[160px] truncate">{opportunity.accountName}</Td>
                   <Td className="max-w-[200px] truncate font-medium text-kumo-default">{opportunity.title}</Td>
                   <Td>{opportunity.ownerName}</Td>
-                  <Td className="max-w-[140px] truncate text-kumo-subtle">{opportunity.primaryContactName ?? "—"}</Td>
+                  <Td className="max-w-[140px] truncate text-kumo-subtle" title={opportunity.contactNames.join("、") || undefined}>
+                    {opportunity.contactNames.join("、") || "—"}
+                  </Td>
                   <Td className="max-w-[240px] truncate text-kumo-subtle">{opportunity.currentSituation ?? "—"}</Td>
                   <Td className="whitespace-nowrap">
                     <OpportunityStatusBadge
@@ -224,14 +226,16 @@ function Td({
   className = "",
   align = "left",
   onClick,
+  title,
 }: {
   children: React.ReactNode;
   className?: string;
   align?: "left" | "right";
   onClick?: (event: React.MouseEvent) => void;
+  title?: string;
 }) {
   return (
-    <td onClick={onClick} className={`px-3 py-2.5 ${align === "right" ? "text-right" : ""} ${className}`}>
+    <td onClick={onClick} title={title} className={`px-3 py-2.5 ${align === "right" ? "text-right" : ""} ${className}`}>
       {children}
     </td>
   );

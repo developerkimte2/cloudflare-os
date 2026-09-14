@@ -21,14 +21,32 @@ export function CustomerInfo({
   onSaveAccount,
   onCreatePerson,
   onUpdatePerson,
+  contactPersonIds,
+  onSetContacts,
+  contactOpportunities,
+  onOpenOpportunity,
 }: {
   account: CustomerAccount;
   persons: CustomerPerson[];
   onSaveAccount: (patch: AccountPatch) => Promise<boolean>;
-  onCreatePerson: (input: PersonInput) => Promise<boolean>;
+  onCreatePerson: (input: PersonInput, options?: { asContact?: boolean }) => Promise<boolean>;
   onUpdatePerson: (personId: string, patch: PersonPatch) => Promise<boolean>;
+  /** This opportunity's 窓口. Omit (with onSetContacts) on a page not scoped to one deal. */
+  contactPersonIds?: string[];
+  onSetContacts?: (personIds: string[]) => Promise<boolean>;
+  /** Customer page only: which of this customer's opportunities each person is 窓口 for. */
+  contactOpportunities?: Record<string, { id: string; title: string }[]>;
+  onOpenOpportunity?: (id: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const showContactToggle = !!onSetContacts;
+  // Contacts of this deal float to the top; everyone else keeps listPersonsForAccount's order.
+  const ordered = showContactToggle
+    ? [
+        ...(contactPersonIds ?? []).map((id) => persons.find((p) => p.id === id)).filter((p): p is CustomerPerson => !!p),
+        ...persons.filter((p) => !contactPersonIds?.includes(p.id)),
+      ]
+    : persons;
 
   return (
     <div className="space-y-3">
@@ -51,21 +69,43 @@ export function CustomerInfo({
           <p className="text-sm text-kumo-subtle">まだ担当者が登録されていません。</p>
         )}
         <div className="divide-y divide-kumo-line">
-          {persons.map((person) => (
-            <PersonRow key={person.id} person={person} onSave={(patch) => onUpdatePerson(person.id, patch)} />
+          {ordered.map((person) => (
+            <PersonRow
+              key={person.id}
+              person={person}
+              onSave={(patch) => onUpdatePerson(person.id, patch)}
+              isContact={showContactToggle ? (contactPersonIds ?? []).includes(person.id) : undefined}
+              onToggleContact={
+                showContactToggle
+                  ? () => {
+                      const current = contactPersonIds ?? [];
+                      const next = current.includes(person.id)
+                        ? current.filter((id) => id !== person.id)
+                        : [...current, person.id];
+                      return onSetContacts!(next);
+                    }
+                  : undefined
+              }
+              opportunities={contactOpportunities?.[person.id]}
+              onOpenOpportunity={onOpenOpportunity}
+            />
           ))}
         </div>
         {adding && (
           <PersonForm
             submitLabel="追加"
+            showContactCheckbox={showContactToggle}
             onCancel={() => setAdding(false)}
-            onSubmit={async (values) => {
-              const ok = await onCreatePerson({
-                displayName: values.displayName,
-                title: values.title || undefined,
-                email: values.email || undefined,
-                phone: values.phone || undefined,
-              });
+            onSubmit={async (values, asContact) => {
+              const ok = await onCreatePerson(
+                {
+                  displayName: values.displayName,
+                  title: values.title || undefined,
+                  email: values.email || undefined,
+                  phone: values.phone || undefined,
+                },
+                { asContact },
+              );
               if (ok) setAdding(false);
             }}
           />
@@ -167,8 +207,25 @@ function CompanyCard({
   );
 }
 
-function PersonRow({ person, onSave }: { person: CustomerPerson; onSave: (patch: PersonPatch) => Promise<boolean> }) {
+function PersonRow({
+  person,
+  onSave,
+  isContact,
+  onToggleContact,
+  opportunities,
+  onOpenOpportunity,
+}: {
+  person: CustomerPerson;
+  onSave: (patch: PersonPatch) => Promise<boolean>;
+  /** undefined on a page not scoped to one deal (the toggle button is hidden). */
+  isContact?: boolean;
+  onToggleContact?: () => Promise<boolean>;
+  /** Customer page only: the deals this person is 窓口 for. */
+  opportunities?: { id: string; title: string }[];
+  onOpenOpportunity?: (id: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   if (editing) {
     return (
@@ -189,6 +246,12 @@ function PersonRow({ person, onSave }: { person: CustomerPerson; onSave: (patch:
     );
   }
 
+  const toggleContact = async () => {
+    setToggling(true);
+    await onToggleContact!();
+    setToggling(false);
+  };
+
   return (
     <div className="flex items-start gap-3 py-2.5">
       <div className="min-w-0 flex-1">
@@ -200,14 +263,57 @@ function PersonRow({ person, onSave }: { person: CustomerPerson; onSave: (patch:
           <span>電話: {person.phone ?? "—"}</span>
           <span className="break-all">メール: {person.email ?? "—"}</span>
         </p>
+        {opportunities !== undefined && (
+          <p className="mt-1 text-xs text-kumo-subtle">
+            窓口の案件:{" "}
+            {opportunities.length === 0 ? (
+              "なし"
+            ) : (
+              opportunities.map((o, i) => (
+                <span key={o.id}>
+                  {i > 0 && "、"}
+                  <button
+                    type="button"
+                    onClick={() => onOpenOpportunity?.(o.id)}
+                    className="text-kumo-link hover:underline"
+                  >
+                    {o.title}
+                  </button>
+                </span>
+              ))
+            )}
+          </p>
+        )}
       </div>
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="press shrink-0 rounded-md border border-kumo-line bg-kumo-base px-2 py-1 text-xs font-medium text-kumo-default hover:bg-kumo-tint"
-      >
-        編集
-      </button>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {isContact !== undefined &&
+          (isContact ? (
+            <button
+              type="button"
+              disabled={toggling}
+              onClick={() => void toggleContact()}
+              className="press rounded-md border border-transparent bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-900 hover:bg-emerald-200 disabled:opacity-50 dark:bg-emerald-500/20 dark:text-emerald-300"
+            >
+              この案件の窓口 ✓
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={toggling}
+              onClick={() => void toggleContact()}
+              className="press rounded-md border border-kumo-line bg-kumo-base px-2 py-1 text-xs font-medium text-kumo-default hover:bg-kumo-tint disabled:opacity-50"
+            >
+              窓口にする
+            </button>
+          ))}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="press rounded-md border border-kumo-line bg-kumo-base px-2 py-1 text-xs font-medium text-kumo-default hover:bg-kumo-tint"
+        >
+          編集
+        </button>
+      </div>
     </div>
   );
 }
@@ -217,12 +323,15 @@ type PersonValues = { displayName: string; title: string; email: string; phone: 
 function PersonForm({
   initial,
   submitLabel,
+  showContactCheckbox,
   onSubmit,
   onCancel,
 }: {
   initial?: CustomerPerson;
   submitLabel: string;
-  onSubmit: (values: PersonValues) => Promise<void>;
+  /** Show "この案件の窓口にする" (default checked) — only meaningful when adding, on a deal-scoped page. */
+  showContactCheckbox?: boolean;
+  onSubmit: (values: PersonValues, asContact: boolean) => Promise<void>;
   onCancel: () => void;
 }) {
   const [values, setValues] = useState<PersonValues>({
@@ -231,6 +340,7 @@ function PersonForm({
     email: initial?.email ?? "",
     phone: initial?.phone ?? "",
   });
+  const [asContact, setAsContact] = useState(true);
   const [saving, setSaving] = useState(false);
   const set = (key: keyof PersonValues) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setValues((current) => ({ ...current, [key]: event.currentTarget.value }));
@@ -246,7 +356,7 @@ function PersonForm({
   const submit = async () => {
     if (!trimmed.displayName) return;
     setSaving(true);
-    await onSubmit(trimmed);
+    await onSubmit(trimmed, asContact);
     setSaving(false);
   };
 
@@ -272,6 +382,12 @@ function PersonForm({
           />
         </Labeled>
       </div>
+      {showContactCheckbox && (
+        <label className="mt-3 flex items-center gap-1.5 text-sm text-kumo-default">
+          <input type="checkbox" checked={asContact} onChange={(event) => setAsContact(event.currentTarget.checked)} />
+          この案件の窓口にする
+        </label>
+      )}
       <div className="mt-3 flex justify-end gap-2">
         <button
           type="button"

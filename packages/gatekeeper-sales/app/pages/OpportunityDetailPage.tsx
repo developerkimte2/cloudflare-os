@@ -127,10 +127,30 @@ export default function OpportunityDetailPage({
     return saved !== undefined;
   };
 
-  const createPerson = async (input: PersonInput) => {
+  const setContacts = async (personIds: string[]) => {
+    const saved = await runAction(
+      () => api.updateOpportunity(opportunityId, { contactPersonIds: personIds, version: data.version }),
+      "窓口の変更に失敗しました",
+    );
+    if (saved) reload();
+    return saved !== undefined;
+  };
+
+  const createPerson = async (input: PersonInput, options?: { asContact?: boolean }) => {
     const created = await runAction(() => api.createPerson(data.account.id, input), "担当者の追加に失敗しました");
-    if (created) reload();
-    return created !== undefined;
+    if (!created) return false;
+    if (options?.asContact) {
+      // Best-effort: the person is created either way; failing to also mark them 窓口 (e.g. a
+      // concurrent edit changed the opportunity's version) still leaves the reload below to run.
+      await runAction(
+        () => api.updateOpportunity(opportunityId, {
+          contactPersonIds: [...data.contactPersonIds, created.id], version: data.version,
+        }),
+        "窓口への追加に失敗しました",
+      );
+    }
+    reload();
+    return true;
   };
 
   const updatePerson = async (personId: string, patch: PersonPatch) => {
@@ -155,6 +175,8 @@ export default function OpportunityDetailPage({
           onSaveAccount={saveAccount}
           onCreatePerson={createPerson}
           onUpdatePerson={updatePerson}
+          contactPersonIds={data.contactPersonIds}
+          onSetContacts={setContacts}
         />
       </Section>
 
@@ -392,11 +414,14 @@ function OpportunityHeader({
           />
         </Field>
       </div>
-      {opportunity.primaryContactName && (
-        <p className="mt-3 text-xs text-kumo-subtle">
-          顧客窓口: <span className="text-kumo-default">{opportunity.primaryContactName}</span>
-        </p>
-      )}
+      <p className="mt-3 text-xs text-kumo-subtle">
+        顧客窓口:{" "}
+        {opportunity.contactNames.length > 0 ? (
+          <span className="text-kumo-default">{opportunity.contactNames.join("、")}</span>
+        ) : (
+          "未指定（下の「顧客情報」で窓口を選べます）"
+        )}
+      </p>
 
       <div className="mt-4 flex justify-end">
         {closingOut ? (

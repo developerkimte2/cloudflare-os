@@ -6,7 +6,7 @@ function opportunity(overrides: Partial<OpportunityDetail>): OpportunityDetail {
   return {
     id: "o1", title: "モバイルオーダー導入", accountId: "a1", accountName: "株式会社グリーンテーブル",
     accountResolutionStatus: "RESOLVED", ownerUserId: "u1", ownerName: "田中",
-    collaboratorUserIds: [], lifecycleState: "OPEN", operationalState: "ACTIVE",
+    collaboratorUserIds: [], contactPersonIds: [], contactNames: [], lifecycleState: "OPEN", operationalState: "ACTIVE",
     riskLevel: "LOW", account: { id: "a1" } as OpportunityDetail["account"], persons: [],
     nextActions: [], commitments: [], activities: [], sources: [], decisions: [], reviews: [], audit: [],
     ...overrides,
@@ -17,7 +17,7 @@ describe("buildOpportunityReport", () => {
   it("(a) fills every section from a fully-populated opportunity", () => {
     const text = buildOpportunityReport(
       opportunity({
-        primaryContactName: "小林様",
+        contactNames: ["小林様"],
         riskLevel: "HIGH",
         riskReason: "通信障害への回答が不安",
         nextAction: { id: "n1", title: "障害時運用資料を送付", dueAt: "2026-09-15T00:00:00.000Z" } as OpportunityDetail["nextAction"],

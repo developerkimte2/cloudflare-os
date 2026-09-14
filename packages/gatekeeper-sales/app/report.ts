@@ -46,7 +46,7 @@ export function buildOpportunityReport(o: OpportunityDetail, timezone: string): 
     "",
     `■ 企業:        ${o.accountName}`,
     `■ 担当:        ${o.ownerName}`,
-    `■ 顧客窓口:    ${o.primaryContactName ?? "未登録"}`,
+    `■ 顧客窓口:    ${o.contactNames.join("、") || "未登録"}`,
     `■ 現在の状況:  ${statusLine(o)}`,
     `■ リスク:      ${risk}`,
     "",
