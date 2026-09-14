@@ -192,8 +192,11 @@ export interface CaptureResult {
 }
 
 export interface OpportunityDetail extends OpportunitySummary {
-  account: { id: string; displayName: string; primaryDomain?: string; resolutionStatus: string };
-  persons: { id: string; displayName: string; email?: string; title?: string }[];
+  account: {
+    id: string; displayName: string; primaryDomain?: string; resolutionStatus: string;
+    address?: string; phone?: string; websiteUrl?: string;
+  };
+  persons: { id: string; displayName: string; email?: string; phone?: string; title?: string }[];
   /** Latest AI context view, or undefined for a brand-new deal. */
   context?: ContextSnapshot;
   nextActions: NextAction[];
@@ -210,6 +213,8 @@ export interface OpportunityFilter {
   expectedAmountGte?: number;
   /** Only deals with no meaningful activity for at least this many days. */
   stalledDays?: number;
+  /** Free-text search: title, phase, customer name, customer contact name or owner name. */
+  query?: string;
   limit?: number;
 }
 

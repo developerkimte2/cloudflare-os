@@ -12,11 +12,12 @@ import { createLogger } from "@gadgets/backend-utils/logger";
 import {
   DurableObjectSqlExecutor, Repository, SalesService, buildMorningBrief, loadConfig, localDate,
   migrate, morningBriefMessageHash, newId, nowIso, systemClock, MORNING_BRIEF_NOTIFICATION_TYPE,
-  type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog, type CaptureOptions,
-  type CaptureResult, type Commitment, type ConfigDto, type CoreContext, type ManagerSummary,
+  type AccountPatch, type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog,
+  type CaptureOptions, type CaptureResult, type Commitment, type ConfigDto, type CoreContext,
+  type CustomerAccount, type CustomerPerson, type ManagerSummary,
   type NextAction, type NextActionFilter, type NextActionInput, type NextActionPatch,
   type OpportunityDetail, type OpportunityFilter, type OpportunityPatch, type OpportunitySummary,
-  type RegisterIdentityInput, type ReviewDto, type ReviewResolution, type SalesConfig,
+  type PersonInput, type PersonPatch, type RegisterIdentityInput, type ReviewDto, type ReviewResolution, type SalesConfig,
   type SourceDocument, type TodayView, type UserDto, toUserDto,
 } from "@gadgets/sales-core";
 import { buildLlm, describeAi } from "./llm.js";
@@ -214,6 +215,18 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
 
   async updateOpportunity(caller: Caller, id: string, patch: OpportunityPatch): Promise<OpportunitySummary> {
     return this.#service.updateOpportunity(this.#actor(caller), id, patch);
+  }
+
+  async updateAccount(caller: Caller, accountId: string, patch: AccountPatch): Promise<CustomerAccount> {
+    return this.#service.updateAccount(this.#actor(caller), accountId, patch);
+  }
+
+  async createPerson(caller: Caller, accountId: string, input: PersonInput): Promise<CustomerPerson> {
+    return this.#service.createPerson(this.#actor(caller), accountId, input);
+  }
+
+  async updatePerson(caller: Caller, personId: string, patch: PersonPatch): Promise<CustomerPerson> {
+    return this.#service.updatePerson(this.#actor(caller), personId, patch);
   }
 
   async recomputeContext(caller: Caller, id: string): Promise<AIContextSnapshot> {

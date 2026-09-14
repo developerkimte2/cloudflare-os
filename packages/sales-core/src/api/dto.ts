@@ -118,6 +118,8 @@ export interface OpportunityFilter {
   expectedAmountGte?: number;
   /** Only opportunities with no meaningful activity for this many days. */
   stalledDays?: number;
+  /** Free-text search over title, phase, customer name, customer contacts and owner name. */
+  query?: string;
   limit?: number;
 }
 
@@ -133,6 +135,28 @@ export interface OpportunityPatch {
   collaboratorUserIds?: string[];
   /** Optimistic concurrency: must equal the version the caller last saw. */
   version: number;
+}
+
+/** Company contact details; null or "" clears a field. */
+export interface AccountPatch {
+  address?: string | null;
+  phone?: string | null;
+  websiteUrl?: string | null;
+}
+
+export interface PersonInput {
+  displayName: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+}
+
+/** null or "" clears a field; displayName cannot be cleared. */
+export interface PersonPatch {
+  displayName?: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
 }
 
 export interface NextActionFilter {

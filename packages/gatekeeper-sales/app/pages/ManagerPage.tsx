@@ -3,7 +3,7 @@ import { ChatCircleDots } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { ManagerSummary, OpportunitySummary, SalesManagementApi, UserDto } from "../../src/management-types";
 import { useApiAction, useAsyncData } from "../api";
-import { LifecycleBadge, RiskBadge } from "../components/Badges";
+import { OpportunityStatusBadge, RiskBadge } from "../components/Badges";
 import { formatDate, formatDateTime } from "../format";
 import { LIFECYCLE_LABEL, ROLE_LABEL } from "../labels";
 
@@ -146,7 +146,10 @@ function OpportunityListSection({
                   <span className="truncate text-sm font-medium text-kumo-default">
                     {opportunity.accountName} / {opportunity.title}
                   </span>
-                  <LifecycleBadge state={opportunity.lifecycleState} />
+                  <OpportunityStatusBadge
+                    lifecycleState={opportunity.lifecycleState}
+                    operationalState={opportunity.operationalState}
+                  />
                   <RiskBadge level={opportunity.riskLevel} />
                 </div>
                 <p className="mt-0.5 truncate text-xs text-kumo-subtle">

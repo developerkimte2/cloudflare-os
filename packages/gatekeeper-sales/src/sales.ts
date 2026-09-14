@@ -21,10 +21,11 @@ import type {
   SupportedResource, VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
 import type {
-  AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto,
-  ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput, ReviewDto,
-  ReviewResolution, SalesConfig, SourceDocument, TodayView, UserDto,
+  AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  ConfigDto, CustomerAccount, CustomerPerson, ManagerSummary, NextAction, NextActionFilter,
+  NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
+  OpportunitySummary, PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution,
+  SalesConfig, SourceDocument, TodayView, UserDto,
 } from "@gadgets/sales-core";
 import type { SalesManagementApi, WhoAmI } from "./management-types.js";
 import type { SalesSession } from "./types.js";
@@ -478,6 +479,9 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   getOpportunity(id: string): Promise<OpportunityDetail> { return this.core.getOpportunity(this.caller, id); }
   updateOpportunity(id: string, patch: OpportunityPatch): Promise<OpportunitySummary> { return this.core.updateOpportunity(this.caller, id, patch); }
   recomputeContext(id: string): Promise<AIContextSnapshot> { return this.core.recomputeContext(this.caller, id); }
+  updateAccount(accountId: string, patch: AccountPatch): Promise<CustomerAccount> { return this.core.updateAccount(this.caller, accountId, patch); }
+  createPerson(accountId: string, input: PersonInput): Promise<CustomerPerson> { return this.core.createPerson(this.caller, accountId, input); }
+  updatePerson(personId: string, patch: PersonPatch): Promise<CustomerPerson> { return this.core.updatePerson(this.caller, personId, patch); }
   listNextActions(filter?: NextActionFilter): Promise<NextAction[]> { return this.core.listNextActions(this.caller, filter); }
   createNextAction(input: NextActionInput): Promise<NextAction> { return this.core.createNextAction(this.caller, input); }
   updateNextAction(id: string, patch: NextActionPatch): Promise<NextAction> { return this.core.updateNextAction(this.caller, id, patch); }

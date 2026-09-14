@@ -146,6 +146,23 @@ describe("Repository.listOpportunitiesVisibleTo role filtering", () => {
     const visible = repo.listOpportunitiesVisibleTo(manager);
     expect(visible).toHaveLength(3);
   });
+
+  it("text search matches title, customer, contact and owner names, and treats % and _ literally", () => {
+    const other = makeAccount({ displayName: "ブルームワークス" });
+    repo.insertAccount(other);
+    repo.insertPerson({ id: newId(), accountId: other.id, displayName: "山田花子", resolutionStatus: "MANUAL",
+      createdAt: "2026-09-08T00:00:00.000Z", updatedAt: "2026-09-08T00:00:00.000Z" });
+    repo.insertOpportunity(makeOpportunity(other.id, sales1.id, { title: "100%_導入" }));
+    const titles = (text: string) => repo.listOpportunitiesVisibleTo(manager, { text }).map(o => o.title).sort();
+
+    expect(titles("collab")).toEqual(["collab-with-1"]);
+    expect(titles("ブルーム")).toEqual(["100%_導入"]);
+    expect(titles("山田")).toEqual(["100%_導入"]);
+    expect(titles("sales2")).toEqual(["collab-with-1", "owned-by-2"]);
+    expect(titles("%_")).toEqual(["100%_導入"]);
+    expect(titles("_")).toEqual(["100%_導入"]);
+    expect(titles("  ")).toHaveLength(4);
+  });
 });
 
 describe("Repository.findAccountCandidates", () => {

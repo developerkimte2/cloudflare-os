@@ -204,6 +204,17 @@ export class Repository {
       where.push("COALESCE(last_meaningful_activity_at, updated_at) < ?");
       params.push(filter.notUpdatedSince);
     }
+    const text = filter.text?.trim();
+    if (text) {
+      const pattern = `%${text.replace(/[\\%_]/g, c => `\\${c}`)}%`;
+      where.push(
+        "(title LIKE ? ESCAPE '\\' OR phase_label LIKE ? ESCAPE '\\'" +
+        " OR account_id IN (SELECT id FROM customer_accounts WHERE display_name LIKE ? ESCAPE '\\')" +
+        " OR account_id IN (SELECT account_id FROM customer_persons WHERE display_name LIKE ? ESCAPE '\\')" +
+        " OR owner_user_id IN (SELECT id FROM users WHERE display_name LIKE ? ESCAPE '\\'))",
+      );
+      params.push(pattern, pattern, pattern, pattern, pattern);
+    }
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     return T.opportunities.select(this.db,
       `${clause} ORDER BY updated_at DESC LIMIT ?`, ...params, filter.limit ?? 200);
@@ -533,5 +544,7 @@ export interface OpportunityQuery {
   expectedAmountGte?: number;
   /** ISO instant; returns opportunities whose last meaningful activity is older. */
   notUpdatedSince?: string;
+  /** Substring of the title, phase, customer name, a customer contact's name or the owner's name. */
+  text?: string;
   limit?: number;
 }

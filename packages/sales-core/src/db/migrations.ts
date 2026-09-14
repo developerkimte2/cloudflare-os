@@ -306,6 +306,14 @@ ALTER TABLE opportunities ADD COLUMN proposal_document_url TEXT;
 ALTER TABLE next_actions ADD COLUMN snoozed_until TEXT;
 `,
   },
+  {
+    id: "0004_customer_account_contact_details",
+    sql: `
+ALTER TABLE customer_accounts ADD COLUMN address TEXT;
+ALTER TABLE customer_accounts ADD COLUMN phone TEXT;
+ALTER TABLE customer_accounts ADD COLUMN website_url TEXT;
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

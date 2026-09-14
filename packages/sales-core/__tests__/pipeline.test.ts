@@ -413,6 +413,44 @@ describe("getToday bucketing", () => {
   });
 });
 
+describe("customer contact details", () => {
+  it("saves company address / phone / URL, and adds and edits customer contacts", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    makeOpportunity(svc.repo, account.id, user.id);
+    const actor = { userId: user.id };
+
+    const saved = svc.updateAccount(actor, account.id, {
+      address: " 東京都千代田区1-1 ", phone: "03-1234-5678", websiteUrl: "example.co.jp",
+    });
+    expect(saved).toMatchObject({ address: "東京都千代田区1-1", phone: "03-1234-5678", websiteUrl: "https://example.co.jp/" });
+    expect(svc.repo.getAccount(account.id)!.websiteUrl).toBe("https://example.co.jp/");
+    expect(svc.updateAccount(actor, account.id, { phone: "" }).phone).toBeUndefined();
+    expect(() => svc.updateAccount(actor, account.id, { websiteUrl: "javascript:alert(1)" })).toThrow(TypeError);
+
+    const person = svc.createPerson(actor, account.id, { displayName: "山田 太郎", email: "Taro@Example.co.jp", phone: "090-1111-2222" });
+    expect(person).toMatchObject({ accountId: account.id, email: "taro@example.co.jp", phone: "090-1111-2222" });
+    expect(() => svc.createPerson(actor, account.id, { displayName: "x", email: "not-an-email" })).toThrow(TypeError);
+
+    const edited = svc.updatePerson(actor, person.id, { title: "部長", email: null });
+    expect(edited).toMatchObject({ displayName: "山田 太郎", title: "部長", email: undefined });
+    expect(svc.getOpportunity(actor, svc.repo.listOpportunitiesVisibleTo(svc.repo.getUser(user.id)!)[0]!.id).persons)
+      .toEqual([expect.objectContaining({ id: person.id, title: "部長", phone: "090-1111-2222" })]);
+  });
+
+  it("does not let a SALES user edit a customer they have no opportunity with", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const owner = makeUser(svc.repo, "SALES");
+    const outsider = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    makeOpportunity(svc.repo, account.id, owner.id);
+
+    expect(() => svc.updateAccount({ userId: outsider.id }, account.id, { phone: "03" })).toThrow(/顧客/);
+    expect(() => svc.createPerson({ userId: outsider.id }, account.id, { displayName: "x" })).toThrow(/顧客/);
+  });
+});
+
 describe("askQuestion (capture box search mode)", () => {
   it("answers using only the name-matched opportunity as context", async () => {
     const llm = new FakeLlmProvider(["ABC株式会社の案件は見積送付待ちです。"]);

@@ -4,17 +4,19 @@
  * here is synchronous except the steps that call the LLM.
  */
 import type {
-  Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto, ManagerSummary,
-  NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter,
-  OpportunityPatch, OpportunitySummary, RegisterIdentityInput, ReviewDto, ReviewResolution,
-  TodayAction, TodayView, UserDto,
+  AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
+  ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch, OpportunityDetail,
+  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
+  RegisterIdentityInput, ReviewDto, ReviewResolution, TodayAction, TodayView, UserDto,
 } from "../api/dto.js";
 import { toUserDto } from "../api/dto.js";
 import type {
-  Commitment, CustomerAccount, JsonValue, LifecycleState, NextAction, Opportunity, ReviewItem,
-  SourceDocument, User, UserRole,
+  Commitment, CustomerAccount, CustomerPerson, JsonValue, LifecycleState, NextAction, Opportunity,
+  ReviewItem, SourceDocument, User, UserRole,
 } from "../domain/types.js";
-import { addDays, isIsoDateTime, localDate, newId, normalizeEmail, nowIso } from "../domain/util.js";
+import {
+  addDays, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso,
+} from "../domain/util.js";
 import { loadConfig, saveConfig, type SalesConfig } from "../rules/config.js";
 import { ANSWER_PROMPT_VERSION, buildAnswerRequest } from "../ai/skills.js";
 import { LlmError } from "../ai/provider.js";
@@ -358,6 +360,7 @@ export class SalesService {
       accountId: filter.accountId,
       expectedAmountGte: filter.expectedAmountGte,
       notUpdatedSince: filter.stalledDays !== undefined ? addDays(now, -filter.stalledDays) : undefined,
+      text: filter.query,
       limit: filter.limit,
     }).map(o => this.summarize(o));
   }
@@ -412,6 +415,66 @@ export class SalesService {
         entityType: "opportunity", entityId: id, before: diffable(before), after: diffable(next) });
       return this.summarize(this.repo.getOpportunity(id)!);
     });
+  }
+
+  // ---- customers -------------------------------------------------------------------------------------
+
+  updateAccount(actor: Actor, accountId: string, patch: AccountPatch): CustomerAccount {
+    const user = this.requireUser(actor);
+    const account = this.repo.getAccount(accountId);
+    if (!account || !this.canSeeAccount(user, accountId)) throw new NotFoundError("顧客");
+    const next: CustomerAccount = { ...account, updatedAt: nowIso(this.ctx.clock) };
+    if (patch.address !== undefined) next.address = cleanText(patch.address);
+    if (patch.phone !== undefined) next.phone = cleanText(patch.phone);
+    if (patch.websiteUrl !== undefined) next.websiteUrl = cleanUrl(patch.websiteUrl);
+    this.repo.transaction(() => {
+      this.repo.updateAccount(next);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "CUSTOMER_UPDATED",
+        entityType: "customer_account", entityId: accountId, before: account, after: next });
+    });
+    return next;
+  }
+
+  createPerson(actor: Actor, accountId: string, input: PersonInput): CustomerPerson {
+    const user = this.requireUser(actor);
+    const account = this.repo.getAccount(accountId);
+    if (!account || !this.canSeeAccount(user, accountId)) throw new NotFoundError("顧客");
+    const displayName = input.displayName.trim();
+    if (!displayName) throw new TypeError("担当者名は必須です");
+    const now = nowIso(this.ctx.clock);
+    const person: CustomerPerson = {
+      id: newId(), accountId, displayName, title: cleanText(input.title),
+      email: cleanEmail(input.email), phone: cleanText(input.phone),
+      resolutionStatus: "MANUAL", createdAt: now, updatedAt: now,
+    };
+    this.repo.transaction(() => {
+      this.repo.insertPerson(person);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "PERSON_CREATED",
+        entityType: "customer_person", entityId: person.id, after: person });
+    });
+    return this.repo.getPerson(person.id) ?? person;
+  }
+
+  updatePerson(actor: Actor, personId: string, patch: PersonPatch): CustomerPerson {
+    const user = this.requireUser(actor);
+    const person = this.repo.getPerson(personId);
+    if (!person?.accountId || !this.canSeeAccount(user, person.accountId)) throw new NotFoundError("担当者");
+    const next: CustomerPerson = { ...person, updatedAt: nowIso(this.ctx.clock) };
+    if (patch.displayName !== undefined) {
+      const displayName = patch.displayName.trim();
+      if (!displayName) throw new TypeError("担当者名は必須です");
+      next.displayName = displayName;
+      next.normalizedName = normalizeName(displayName);
+    }
+    if (patch.title !== undefined) next.title = cleanText(patch.title);
+    if (patch.email !== undefined) next.email = cleanEmail(patch.email);
+    if (patch.phone !== undefined) next.phone = cleanText(patch.phone);
+    this.repo.transaction(() => {
+      this.repo.updatePerson(next);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "PERSON_UPDATED",
+        entityType: "customer_person", entityId: personId, before: person, after: next });
+    });
+    return next;
   }
 
   async recompute(actor: Actor, opportunityId: string) {
@@ -667,6 +730,12 @@ export class SalesService {
     return o.ownerUserId === user.id || o.collaboratorUserIds.includes(user.id);
   }
 
+  /** A SALES user may edit a customer only through an opportunity they can see. */
+  private canSeeAccount(user: User, accountId: string): boolean {
+    if (user.role !== "SALES") return true;
+    return this.repo.listOpportunitiesVisibleTo(user, { accountId, limit: 1 }).length > 0;
+  }
+
   summarize(o: Opportunity): OpportunitySummary {
     const account = this.repo.getAccount(o.accountId);
     const owner = this.repo.getUser(o.ownerUserId);
@@ -873,6 +942,33 @@ function isDefined<T>(v: T | undefined | null): v is T {
 
 function stripUndefined<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+/** Trimmed text, or undefined for null / blank (so the column is cleared). */
+function cleanText(value: string | null | undefined): string | undefined {
+  return value?.trim() || undefined;
+}
+
+function cleanEmail(value: string | null | undefined): string | undefined {
+  const email = cleanText(value);
+  if (email === undefined) return undefined;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new TypeError("メールアドレスの形式が正しくありません");
+  return normalizeEmail(email);
+}
+
+/** Accepts "example.co.jp" as well as a full URL; only http(s) links are stored. */
+function cleanUrl(value: string | null | undefined): string | undefined {
+  const text = cleanText(value);
+  if (text === undefined) return undefined;
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    throw new TypeError("会社URLの形式が正しくありません");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new TypeError("会社URLは http(s) で指定してください");
+  return url.toString();
 }
 
 /** Last instant of the local calendar day containing `iso`, as an ISO UTC string. */

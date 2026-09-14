@@ -28,15 +28,37 @@ export function Badge({ label, tone = "neutral" }: { label: string; tone?: Tone 
   );
 }
 
-export function LifecycleBadge({ state }: { state: OpportunitySummary["lifecycleState"] }) {
+/**
+ * One status per opportunity: the lifecycle stage (set by a person or by AI) plus whether AI has
+ * judged how the deal is moving. The operational state itself only shows on hover — two badges
+ * side by side ("進行中" + "不明") read as contradictory.
+ */
+export function OpportunityStatusBadge({
+  lifecycleState,
+  operationalState,
+}: {
+  lifecycleState: OpportunitySummary["lifecycleState"];
+  operationalState: OpportunitySummary["operationalState"];
+}) {
+  const judged = operationalState !== "UNKNOWN";
   const tone: Tone =
-    state === "WON" ? "success" : state === "LOST" ? "danger" : state === "ON_HOLD" ? "warning" : "info";
-  return <Badge label={LIFECYCLE_LABEL[state]} tone={state === "CLOSED" ? "neutral" : tone} />;
-}
-
-export function OperationalBadge({ state }: { state: OpportunitySummary["operationalState"] }) {
-  const tone: Tone = state === "BLOCKED" ? "danger" : state === "CONTRACTING" ? "success" : "neutral";
-  return <Badge label={OPERATIONAL_LABEL[state]} tone={tone} />;
+    lifecycleState === "WON"
+      ? "success"
+      : lifecycleState === "LOST"
+        ? "danger"
+        : lifecycleState === "ON_HOLD"
+          ? "warning"
+          : lifecycleState === "CLOSED" || !judged
+            ? "neutral"
+            : "info";
+  const hint = judged
+    ? `AI の見立て: ${OPERATIONAL_LABEL[operationalState]}`
+    : "AI はまだこの案件の動きを判定していません（記録が少ないか、判断に自信がない状態です）";
+  return (
+    <span title={hint} className="inline-flex">
+      <Badge label={`${LIFECYCLE_LABEL[lifecycleState]}（${judged ? "AI判定済" : "AI未判定"}）`} tone={tone} />
+    </span>
+  );
 }
 
 export function RiskBadge({ level }: { level: OpportunitySummary["riskLevel"] }) {

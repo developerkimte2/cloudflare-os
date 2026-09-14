@@ -7,17 +7,19 @@
  * account is not yet bound to a Sales OS user, only `whoAmI()` and `register()` succeed.
  */
 import type {
-  AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto,
-  JsonValue, ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch,
-  OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput,
-  ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
+  AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  ConfigDto, CustomerAccount, CustomerPerson, JsonValue, ManagerSummary, NextAction, NextActionFilter,
+  NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
+  OpportunitySummary, PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution,
+  SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
 } from "@gadgets/sales-core";
 
 export type {
-  AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment, ConfigDto,
-  JsonValue, ManagerSummary, NextAction, NextActionFilter, NextActionInput, NextActionPatch,
-  OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary, RegisterIdentityInput,
-  ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
+  AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  ConfigDto, CustomerAccount, CustomerPerson, JsonValue, ManagerSummary, NextAction, NextActionFilter,
+  NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
+  OpportunitySummary, PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution,
+  SalesConfig, SourceDocument, TodayAction, TodayView, UserDto,
 };
 
 /** What the app learns about the caller on load. */
@@ -60,6 +62,12 @@ export interface SalesManagementApi {
   getOpportunity(id: string): Promise<OpportunityDetail>;
   updateOpportunity(id: string, patch: OpportunityPatch): Promise<OpportunitySummary>;
   recomputeContext(id: string): Promise<AIContextSnapshot>;
+
+  /** Company address / phone / URL. Shared by every opportunity of that customer. */
+  updateAccount(accountId: string, patch: AccountPatch): Promise<CustomerAccount>;
+  /** Adds a customer-side contact (担当者) with their title, email and phone. */
+  createPerson(accountId: string, input: PersonInput): Promise<CustomerPerson>;
+  updatePerson(personId: string, patch: PersonPatch): Promise<CustomerPerson>;
 
   listNextActions(filter?: NextActionFilter): Promise<NextAction[]>;
   createNextAction(input: NextActionInput): Promise<NextAction>;

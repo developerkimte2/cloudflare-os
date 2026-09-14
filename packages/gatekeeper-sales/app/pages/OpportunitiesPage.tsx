@@ -1,5 +1,6 @@
+import { MagnifyingGlass } from "@phosphor-icons/react";
 import type { RpcStub } from "capnweb";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   OpportunityFilter,
   OpportunitySummary,
@@ -7,7 +8,7 @@ import type {
   UserDto,
 } from "../../src/management-types";
 import { useAsyncData } from "../api";
-import { LifecycleBadge, OperationalBadge, RiskBadge } from "../components/Badges";
+import { OpportunityStatusBadge, RiskBadge } from "../components/Badges";
 import { formatDate, formatDateTime, formatDueLabel } from "../format";
 import { LIFECYCLE_LABEL } from "../labels";
 
@@ -28,6 +29,14 @@ export default function OpportunitiesPage({
   const [lifecycle, setLifecycle] = useState<LifecycleState | "ALL">("OPEN");
   const [ownerUserId, setOwnerUserId] = useState<string>("");
   const [stalledOnly, setStalledOnly] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [query, setQuery] = useState("");
+
+  // Search runs server-side (the list is capped), so wait for a pause in typing before querying.
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(searchText.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
 
   const { data: config } = useAsyncData(() => api.getConfig().catch(() => undefined), [api]);
   const { data: users } = useAsyncData<UserDto[]>(() => api.listUsers().catch(() => [] as UserDto[]), [api]);
@@ -38,13 +47,14 @@ export default function OpportunitiesPage({
       lifecycleStates: lifecycle === "ALL" ? undefined : [lifecycle],
       ownerUserId: ownerUserId || undefined,
       stalledDays: stalledOnly ? stalledDays : undefined,
+      query: query || undefined,
     }),
-    [lifecycle, ownerUserId, stalledOnly, stalledDays],
+    [lifecycle, ownerUserId, stalledOnly, stalledDays, query],
   );
 
   const { loading, error, data, reload } = useAsyncData<OpportunitySummary[]>(
     () => api.listOpportunities(filter),
-    [api, filter.lifecycleStates?.[0], filter.ownerUserId, filter.stalledDays],
+    [api, filter.lifecycleStates?.[0], filter.ownerUserId, filter.stalledDays, filter.query],
   );
 
   return (
@@ -57,6 +67,20 @@ export default function OpportunitiesPage({
       </header>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-sm">
+          <MagnifyingGlass
+            size={14}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-kumo-inactive"
+          />
+          <input
+            type="search"
+            value={searchText}
+            onChange={(event) => setSearchText(event.currentTarget.value)}
+            placeholder="顧客名・案件名・窓口・担当者で検索"
+            aria-label="案件を検索"
+            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base pl-8 pr-2 text-sm text-kumo-default placeholder:text-kumo-inactive"
+          />
+        </div>
         <select
           value={lifecycle}
           onChange={(event) => setLifecycle(event.currentTarget.value as LifecycleState | "ALL")}
@@ -94,7 +118,8 @@ export default function OpportunitiesPage({
       </div>
 
       <div className="mt-4 overflow-x-auto rounded-lg border border-kumo-line">
-        {loading ? (
+        {/* Keep the previous rows up while a new search/filter loads, so typing doesn't flash. */}
+        {loading && !data ? (
           <p className="px-4 py-8 text-center text-sm text-kumo-subtle">読み込み中…</p>
         ) : error ? (
           <div className="px-4 py-8 text-center">
@@ -136,11 +161,11 @@ export default function OpportunitiesPage({
                   <Td>{opportunity.ownerName}</Td>
                   <Td className="max-w-[140px] truncate text-kumo-subtle">{opportunity.primaryContactName ?? "—"}</Td>
                   <Td className="max-w-[240px] truncate text-kumo-subtle">{opportunity.currentSituation ?? "—"}</Td>
-                  <Td>
-                    <div className="flex flex-col gap-1">
-                      <LifecycleBadge state={opportunity.lifecycleState} />
-                      <OperationalBadge state={opportunity.operationalState} />
-                    </div>
+                  <Td className="whitespace-nowrap">
+                    <OpportunityStatusBadge
+                      lifecycleState={opportunity.lifecycleState}
+                      operationalState={opportunity.operationalState}
+                    />
                   </Td>
                   <Td className="max-w-[200px] truncate">{opportunity.nextAction?.title ?? "—"}</Td>
                   <Td onClick={(event) => opportunity.proposalDocumentUrl && event.stopPropagation()}>

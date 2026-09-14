@@ -45,6 +45,10 @@ export interface CustomerAccount {
   displayName: string;
   normalizedName?: string;
   primaryDomain?: string;
+  /** Company contact details, entered by hand from the opportunity page. */
+  address?: string;
+  phone?: string;
+  websiteUrl?: string;
   externalProvider?: string;
   externalAccountId?: string;
   resolutionStatus: ResolutionStatus;

@@ -2,6 +2,7 @@ import type { RpcStub } from "capnweb";
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useState } from "react";
 import type {
+  AccountPatch,
   AIContextSnapshot,
   AuditLog,
   Commitment,
@@ -10,6 +11,8 @@ import type {
   NextActionInput,
   OpportunityDetail,
   OpportunityPatch,
+  PersonInput,
+  PersonPatch,
   SalesManagementApi,
   SourceDocument,
   UserDto,
@@ -18,12 +21,12 @@ import { useApiAction, useAsyncData } from "../api";
 import {
   Badge,
   CommitmentStatusBadge,
-  LifecycleBadge,
-  OperationalBadge,
+  OpportunityStatusBadge,
   ProcessingStatusBadge,
   RiskBadge,
 } from "../components/Badges";
 import { ConfirmInline } from "../components/ConfirmInline";
+import { CustomerInfo } from "../components/CustomerInfo";
 import { NextActionRow } from "../components/NextActionRow";
 import { ReviewCard } from "../components/ReviewCard";
 import { formatDate, formatDateTime, isoToLocalInput, localInputToIso } from "../format";
@@ -118,6 +121,24 @@ export default function OpportunityDetailPage({
     reload();
   };
 
+  const saveAccount = async (patch: AccountPatch) => {
+    const saved = await runAction(() => api.updateAccount(data.account.id, patch), "会社情報の保存に失敗しました");
+    if (saved) reload();
+    return saved !== undefined;
+  };
+
+  const createPerson = async (input: PersonInput) => {
+    const created = await runAction(() => api.createPerson(data.account.id, input), "担当者の追加に失敗しました");
+    if (created) reload();
+    return created !== undefined;
+  };
+
+  const updatePerson = async (personId: string, patch: PersonPatch) => {
+    const saved = await runAction(() => api.updatePerson(personId, patch), "担当者の保存に失敗しました");
+    if (saved) reload();
+    return saved !== undefined;
+  };
+
   const revertCapture = async (sourceId: string) => {
     await runAction(() => api.revertCapture(sourceId), "取り消しに失敗しました");
     reload();
@@ -126,6 +147,16 @@ export default function OpportunityDetailPage({
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <OpportunityHeader opportunity={data} users={users ?? []} timezone={timezone} onSave={savePatch} />
+
+      <Section title="顧客情報">
+        <CustomerInfo
+          account={data.account}
+          persons={data.persons}
+          onSaveAccount={saveAccount}
+          onCreatePerson={createPerson}
+          onUpdatePerson={updatePerson}
+        />
+      </Section>
 
       <ContextSection context={data.context} timezone={timezone} onRecompute={recompute} recomputing={recomputing} />
 
@@ -284,8 +315,10 @@ function OpportunityHeader({
           className="min-w-0 flex-1 border-0 bg-transparent text-lg font-semibold text-kumo-default outline-none"
         />
         <div className="flex items-center gap-1.5">
-          <LifecycleBadge state={opportunity.lifecycleState} />
-          <OperationalBadge state={opportunity.operationalState} />
+          <OpportunityStatusBadge
+            lifecycleState={opportunity.lifecycleState}
+            operationalState={opportunity.operationalState}
+          />
           <RiskBadge level={opportunity.riskLevel} />
           <button
             type="button"
