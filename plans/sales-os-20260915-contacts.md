@@ -43,4 +43,9 @@
 
 ## 4. 状態
 
-- 2026-09-15 時点: 調査のみ。**実装は未着手**。ユーザーの指示待ち (A だけか、B まで含めるか)。
+- 2026-09-15: ユーザー指示「販売管理ツールという観点からチェック、対応」を受け **A → B → C を実装済み** (各 1 コミット)。
+  - A `53cca11` answer.v6: 窓口の役職・メール・電話と顧客の電話・Web を回答データに載せる。
+  - B `81e01c4` extract.v4: `person_candidates.phone` を追加し、担当者作成 2 箇所で保存。既存担当者への補完は未実装 (別判断)。
+  - C: `AnswerResult.contactsMissing` (名前一致した案件のうち窓口が空のもの、コードで算出) を `AnswerView` が案内 + 案件リンクで表示。
+- 検証: sales-core 275 件、gatekeeper-sales 48 件 (worker 8 + node 15 + app 25) 緑、build 成功、`node:sqlite` 0。
+- **未検証**: extract.v4 を `capture_test_samples.csv` (31 件) で qwen3-coder:30b に流す再確認。画面の見た目 (AnswerView の案内枠) はユーザーの目視待ち。dev サーバーは wrangler が src/app を watch するので再起動不要のはず (sales-core の変更が反映されなければ再起動)。

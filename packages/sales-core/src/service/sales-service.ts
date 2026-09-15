@@ -174,7 +174,7 @@ export class SalesService {
     if (visible.length === 0) {
       return {
         answer: "まだ案件データがありません。取り込みを行うと、ここで状況を聞けるようになります。",
-        references: [], matchedByName: false,
+        references: [], matchedByName: false, contactsMissing: [],
       };
     }
     // Match on lightweight {id, accountName, title} refs first (one deduped account lookup per
@@ -200,6 +200,10 @@ export class SalesService {
       : [...visible].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
     const context = chosen.map(o => this.answerContext(this.summarize(o), accountOf(o.accountId)));
     const references = context.map(o => ({ id: o.id, accountName: o.accountName, title: o.title }));
+    // Only for cases the rep actually asked about: a fallback list is context, not a to-do.
+    const contactsMissing = matchedByName
+      ? context.filter(o => o.contacts.length === 0).map(o => ({ id: o.id, accountName: o.accountName, title: o.title }))
+      : [];
     const request = buildAnswerRequest({
       referenceTime: nowIso(this.ctx.clock), timezone: user.timezone || this.config.defaultTimezone,
       question: q, opportunities: context, matchedByName,
@@ -216,13 +220,13 @@ export class SalesService {
         outputTokens: res.usage?.outputTokens,
       });
       return {
-        answer: res.text.trim(), references, matchedByName,
+        answer: res.text.trim(), references, matchedByName, contactsMissing,
         modelProvider: res.provider, modelName: res.model,
       };
     } catch (err) {
       const message = err instanceof LlmError ? err.message : "AI の呼び出しに失敗しました";
       logEvent(this.ctx, "question.answered", { status: "failed", error: message });
-      return { answer: "", references, matchedByName, error: message };
+      return { answer: "", references, matchedByName, contactsMissing, error: message };
     }
   }
 

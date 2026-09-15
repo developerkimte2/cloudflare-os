@@ -994,6 +994,27 @@ describe("askQuestion (capture box search mode)", () => {
     expect(dump).toContain("顧客連絡先: 電話 03-0000-1111、Web https://abc.example.com");
   });
 
+  it("lists the asked-about cases that have no 窓口, and none on a recent-activity fallback", async () => {
+    const llm = new FakeLlmProvider(["窓口は未設定です。", "直近の案件はこちらです。"]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const abc = makeAccount(svc.repo, { displayName: "ABC株式会社" });
+    const noContact = makeOpportunity(svc.repo, abc.id, user.id, { title: "ABC株式会社 新機能提案" });
+    const tanaka = {
+      id: newId(), accountId: abc.id, displayName: "田中", resolutionStatus: "MANUAL" as const,
+      createdAt: NOW, updatedAt: NOW,
+    };
+    svc.repo.insertPerson(tanaka);
+    makeOpportunity(svc.repo, abc.id, user.id, { title: "ABC株式会社 保守契約", contactPersonIds: [tanaka.id] });
+
+    const matched = await svc.askQuestion({ userId: user.id }, "ABC株式会社の窓口は？");
+    expect(matched.contactsMissing).toEqual([{ id: noContact.id, accountName: "ABC株式会社", title: "ABC株式会社 新機能提案" }]);
+
+    const fallback = await svc.askQuestion({ userId: user.id }, "何か動きある？");
+    expect(fallback.matchedByName).toBe(false);
+    expect(fallback.contactsMissing).toEqual([]);
+  });
+
   it("falls back to recently-updated opportunities when no name matches, and tells the model/UI so", async () => {
     const llm = new FakeLlmProvider(["該当する案件は見つかりませんでしたが、直近の案件はこちらです。"]);
     const svc = makeService(llm, NOW);

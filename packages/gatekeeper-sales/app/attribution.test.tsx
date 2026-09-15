@@ -107,12 +107,28 @@ describe("CaptureResultView", () => {
 describe("AnswerView", () => {
   it("(g) shows the model that actually answered", () => {
     const result: AnswerResult = {
-      answer: "テスト回答", references: [], matchedByName: true,
+      answer: "テスト回答", references: [], matchedByName: true, contactsMissing: [],
       modelProvider: "fake", modelName: "fake-model",
     };
     const html = renderToStaticMarkup(
       <AnswerView result={result} ai={CONFIGURED_AI} onOpenOpportunity={() => {}} onRetry={() => {}} />,
     );
     expect(html).toContain("fake/fake-model");
+    expect(html).not.toContain("窓口を登録");
+  });
+
+  // 2026-09-15: "窓口: (未設定)" in the answer told the rep nothing about what to do next.
+  it("nudges the rep to register a 窓口 for each asked-about case that has none", () => {
+    const result: AnswerResult = {
+      answer: "窓口: (未設定)", matchedByName: true,
+      references: [{ id: "opp-1", accountName: "ABC株式会社", title: "新機能提案" }],
+      contactsMissing: [{ id: "opp-1", accountName: "ABC株式会社", title: "新機能提案" }],
+      modelProvider: "fake", modelName: "fake-model",
+    };
+    const html = renderToStaticMarkup(
+      <AnswerView result={result} ai={CONFIGURED_AI} onOpenOpportunity={() => {}} onRetry={() => {}} />,
+    );
+    expect(html).toContain("窓口（先方の担当者）が未登録の案件があります");
+    expect(html).toContain("ABC株式会社 / 新機能提案 → 窓口を登録");
   });
 });

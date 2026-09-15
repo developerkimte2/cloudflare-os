@@ -58,6 +58,12 @@ export interface AnswerResult {
    * and the answer falls back to recently-updated opportunities instead (the UI shows a note).
    */
   matchedByName: boolean;
+  /**
+   * Name-matched opportunities that have no 窓口 on file, so the answer could not say who to
+   * contact. Computed in code (never by the model) so the UI can nudge the rep to register one.
+   * Empty on a recent-activity fallback: those cases weren't asked about.
+   */
+  contactsMissing: { id: string; accountName: string; title: string }[];
   modelProvider?: string;
   modelName?: string;
   error?: string;

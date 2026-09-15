@@ -45,6 +45,26 @@ export function AnswerView({
         </p>
       )}
       <p className="whitespace-pre-wrap text-sm text-kumo-default">{result.answer}</p>
+      {result.contactsMissing.length > 0 && (
+        <div className="rounded-md border border-kumo-line bg-kumo-tint px-3 py-2">
+          <p className="text-xs font-medium text-kumo-default">
+            窓口（先方の担当者）が未登録の案件があります。案件画面の「顧客情報」で担当者を追加すると、次回から連絡先も回答に出ます。
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {result.contactsMissing.map((ref) => (
+              <li key={ref.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpenOpportunity(ref.id)}
+                  className="text-xs font-medium text-kumo-link hover:underline"
+                >
+                  {ref.accountName} / {ref.title} → 窓口を登録
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {result.references.length > 0 && (
         <div>
           <p className="text-xs font-medium text-kumo-subtle">参照した案件</p>
