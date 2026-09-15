@@ -147,6 +147,27 @@ describe("customer / opportunity resolution scenarios", () => {
     expect(svc.getOpportunity({ userId: user.id }, result.opportunity!.id).account.resolutionStatus).toBe("RESOLVED");
   });
 
+  // 2026-09-15: a memo's phone number was dropped on the floor (the extraction schema had no
+  // phone field), so the 窓口 record could never answer "where do I call?".
+  it("keeps a new contact's title, email and phone from the memo", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      persons: [{ name: "田中", title: "部長", email: "tanaka@abc.co.jp", phone: "03-1234-5678", confidence: 0.9 }],
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const account = makeAccount(svc.repo, { displayName: "ABC株式会社", resolutionStatus: "RESOLVED" });
+    const opp = makeOpportunity(svc.repo, account.id, user.id, { title: "新機能提案" });
+
+    // Pinned to the deal so the test exercises person creation, not customer resolution.
+    const result = await svc.capture(
+      { userId: user.id }, "田中部長 (03-1234-5678) と話した", { opportunityId: opp.id });
+
+    const persons = svc.repo.listPersonsForAccount(account.id);
+    expect(persons).toHaveLength(1);
+    expect(persons[0]).toMatchObject({ displayName: "田中", title: "部長", email: "tanaka@abc.co.jp", phone: "03-1234-5678" });
+    expect(result.opportunity?.contactNames).toEqual(["田中"]);
+  });
+
   it("reuses the single existing open opportunity for a resolved account", async () => {
     const llm = new FakeLlmProvider([extractionJson({
       persons: [{ name: "山田", email: "yamada@abc.co.jp", confidence: 0.9 }],

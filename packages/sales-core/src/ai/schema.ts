@@ -27,6 +27,8 @@ export const personCandidateSchema = z.object({
   company: z.string().max(200).nullable().optional(),
   email: z.string().max(320).nullable().optional(),
   title: z.string().max(200).nullable().optional(),
+  /** Free-form, as written in the text ("03-1234-5678", "090…"); the answer prompt copies it as-is. */
+  phone: z.string().max(50).nullable().optional(),
   confidence,
 });
 

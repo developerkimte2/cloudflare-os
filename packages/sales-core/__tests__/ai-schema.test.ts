@@ -75,6 +75,23 @@ describe("extractionSchema", () => {
     expect(result.not_sales_related).toBe(false);
   });
 
+  it("accepts a person candidate's phone (as written, up to 50 chars) and tolerates its absence", () => {
+    const withPhone = {
+      ...DESIGN_DOC_EXAMPLE,
+      entities: {
+        account_candidates: [],
+        person_candidates: [{ name: "田中", phone: "03-1234-5678", confidence: 0.9 }],
+      },
+    };
+    const parsed = extractionSchema.parse(withPhone);
+    expect(parsed.entities.person_candidates[0]?.phone).toBe("03-1234-5678");
+    const withoutPhone = {
+      ...withPhone,
+      entities: { account_candidates: [], person_candidates: [{ name: "田中", confidence: 0.9 }] },
+    };
+    expect(extractionSchema.safeParse(withoutPhone).success).toBe(true);
+  });
+
   it("rejects an invalid enum value", () => {
     const bad = { ...DESIGN_DOC_EXAMPLE, activity: { ...DESIGN_DOC_EXAMPLE.activity, type: "SMOKE_SIGNAL" } };
     expect(extractionSchema.safeParse(bad).success).toBe(false);

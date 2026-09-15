@@ -328,6 +328,7 @@ function applyExtraction(
         normalizedName: normalizeName(p.name),
         email: p.email ? normalizeEmail(p.email) : undefined,
         title: p.title ?? undefined,
+        phone: p.phone ?? undefined,
         resolutionStatus: account.resolutionStatus === "UNRESOLVED" ? "UNRESOLVED" : "MANUAL",
         createdAt: now, updatedAt: now,
       };
@@ -428,6 +429,7 @@ function applyExtraction(
         normalizedName: normalizeName(p.name),
         email: p.email ? normalizeEmail(p.email) : undefined,
         title: p.title ?? undefined,
+        phone: p.phone ?? undefined,
         resolutionStatus: account.resolutionStatus === "UNRESOLVED" ? "UNRESOLVED" : "MANUAL",
         createdAt: now, updatedAt: now,
       };
