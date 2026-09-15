@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { buildAnswerRequest, buildContextRequest, buildExtractionRequest } from "../src/ai/skills.js";
+import {
+  buildAnswerRequest, buildContextRequest, buildExtractionRequest, type AnswerOpportunity,
+} from "../src/ai/skills.js";
 import { contextSnapshotSchema, extractionSchema, jsonSchemaOf } from "../src/ai/schema.js";
-import type { OpportunitySummary } from "../src/api/dto.js";
 import type { User } from "../src/domain/types.js";
 
 const submitter: User = {
@@ -162,10 +163,11 @@ describe("buildContextRequest", () => {
 });
 
 describe("buildAnswerRequest", () => {
-  const opportunity: OpportunitySummary = {
+  const opportunity: AnswerOpportunity = {
     id: "opp-1", title: "新機能提案", accountId: "acc-1", accountName: "ABC株式会社",
     accountResolutionStatus: "MANUAL", ownerUserId: "user-1", ownerName: "太郎",
-    collaboratorUserIds: [], contactPersonIds: [], contactNames: [], lifecycleState: "OPEN", operationalState: "ACTIVE",
+    collaboratorUserIds: [], contactPersonIds: [], contactNames: [], contacts: [],
+    lifecycleState: "OPEN", operationalState: "ACTIVE",
     riskLevel: "MEDIUM", riskReason: "返信が遅い",
     nextAction: {
       id: "na-1", opportunityId: "opp-1", assignedUserId: "user-1", actionType: "EMAIL",
@@ -251,7 +253,10 @@ describe("buildAnswerRequest", () => {
     const req = buildAnswerRequest({
       referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
       question: "ABC株式会社の状況どうなっている？", matchedByName: true,
-      opportunities: [{ ...opportunity, contactNames: ["山田", "佐藤"], expectedAmount: 500000 }],
+      opportunities: [{
+        ...opportunity, contactNames: ["山田", "佐藤"], expectedAmount: 500000,
+        contacts: [{ name: "山田" }, { name: "佐藤" }],
+      }],
     });
     expect(req.user).toContain("社内担当: 太郎");
     expect(req.user).toContain("窓口: 山田、佐藤");
@@ -266,7 +271,30 @@ describe("buildAnswerRequest", () => {
       opportunities: [{ ...opportunity, expectedAmount: 1000, currency: "USD" }],
     });
     expect(req.user).toContain("窓口: (未設定)");
+    expect(req.user).toContain("顧客連絡先: (未設定)");
     expect(req.user).toContain("見込金額: 1,000 USD");
+  });
+
+  // 2026-09-15: "窓口: 田中" alone still left the rep not knowing where to send the inquiry. A
+  // sales-management answer has to say how to reach the contact, and the company, not just who.
+  it("hands the model each contact's title, email and phone, and the company's phone/website", () => {
+    const req = buildAnswerRequest({
+      referenceTime: "2026-09-08T01:00:00Z", timezone: "Asia/Tokyo",
+      question: "ABC株式会社の窓口は？", matchedByName: true,
+      opportunities: [{
+        ...opportunity,
+        contactNames: ["田中 太郎", "佐藤"],
+        contacts: [
+          { name: "田中 太郎", title: "部長", email: "tanaka@abc.co.jp", phone: "03-1234-5678" },
+          { name: "佐藤", email: "sato@abc.co.jp" },
+        ],
+        accountPhone: "03-0000-1111", accountWebsiteUrl: "https://abc.example.com",
+      }],
+    });
+    expect(req.user).toContain("窓口: 田中 太郎 (部長、メール tanaka@abc.co.jp、電話 03-1234-5678)、佐藤 (メール sato@abc.co.jp)");
+    expect(req.user).toContain("顧客連絡先: 電話 03-0000-1111、Web https://abc.example.com");
+    expect(req.system).toContain("「窓口」「顧客連絡先」");
+    expect(req.system).toContain("役職・メール・電話はデータにある分をすべてそのまま書く");
   });
 
   it("asks for one 項目名: 値 line per field so the answer scans at a glance", () => {
@@ -275,7 +303,7 @@ describe("buildAnswerRequest", () => {
       question: "ABC株式会社の状況どうなっている？", opportunities: [opportunity], matchedByName: true,
     });
     expect(req.system).toContain("1 項目 1 行");
-    expect(req.system).toContain("「窓口」「社内担当」");
+    expect(req.system).toContain("「窓口」「顧客連絡先」「社内担当」");
   });
 
   it("shows '(なし)' when there are no opportunities to answer from", () => {

@@ -14,7 +14,7 @@ import type { LlmRequest } from "./provider.js";
 
 export const EXTRACTION_PROMPT_VERSION = "extract.v3";
 export const CONTEXT_PROMPT_VERSION = "context.v1";
-export const ANSWER_PROMPT_VERSION = "answer.v5";
+export const ANSWER_PROMPT_VERSION = "answer.v6";
 
 // Japanese labels for the answer prompt's opportunity dump (FB_20260908: no raw English enums in
 // front of users). buildAnswerRequest's instruction to keep data "as-is" is about not letting the
@@ -48,6 +48,24 @@ function statusLineJa(lifecycleState: LifecycleState, operationalState: Operatio
 function formatAmountJa(amount: number, currency: string | undefined): string {
   const digits = amount.toLocaleString("ja-JP");
   return !currency || currency === "JPY" ? `${digits}円` : `${digits} ${currency}`;
+}
+
+/** "田中 太郎 (部長、メール tanaka@x.co.jp、電話 03-1234-5678)" — every detail on file, as-is. */
+function formatContactJa(c: AnswerContact): string {
+  const details = [
+    c.title,
+    c.email ? `メール ${c.email}` : undefined,
+    c.phone ? `電話 ${c.phone}` : undefined,
+  ].filter((s): s is string => !!s);
+  return details.length > 0 ? `${c.name} (${details.join("、")})` : c.name;
+}
+
+function formatAccountContactJa(phone: string | undefined, websiteUrl: string | undefined): string {
+  const details = [
+    phone ? `電話 ${phone}` : undefined,
+    websiteUrl ? `Web ${websiteUrl}` : undefined,
+  ].filter((s): s is string => !!s);
+  return details.length > 0 ? details.join("、") : "(未設定)";
 }
 
 const UNTRUSTED_RULE =
@@ -233,12 +251,33 @@ export function buildContextRequest(input: ContextInput): LlmRequest {
   return { system, user, json: true, maxTokens: 3000, temperature: 0 };
 }
 
+/** One customer-side contact (窓口) as handed to the answer prompt: who to reach, and how. */
+export interface AnswerContact {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+}
+
+/**
+ * An opportunity plus the contact details a rep needs to actually reach someone about it. The
+ * summary only carries contact *names*; a "who do I call?" question needs the phone/email too
+ * (2026-09-15: a rep got "窓口: 田中" and still didn't know where to send the inquiry).
+ */
+export interface AnswerOpportunity extends OpportunitySummary {
+  /** This opportunity's 窓口, in `contactPersonIds` order. */
+  contacts: AnswerContact[];
+  /** Company-level contact details, entered by hand on the customer page. */
+  accountPhone?: string;
+  accountWebsiteUrl?: string;
+}
+
 export interface AnswerInput {
   referenceTime: string;
   timezone: string;
   question: string;
   /** Pre-selected by `pipeline/ask.ts`'s `matchOpportunities` (or a recent-activity fallback). */
-  opportunities: OpportunitySummary[];
+  opportunities: AnswerOpportunity[];
   /**
    * True when `opportunities` was matched by name against the question; false when nothing
    * matched and the caller fell back to recently-updated opportunities instead. The model needs
@@ -264,8 +303,9 @@ export function buildAnswerRequest(input: AnswerInput): LlmRequest {
     "3. 複数の案件が該当する場合は、案件ごとに簡潔に触れる。",
     "4. 金額・状態・担当者名などはデータの表記をそのまま使う (単位や桁区切りを作り変えない)。日時はデータに書かれている表記をそのまま使う (ISO 8601 形式などへの変換や再計算はしない)。",
     "5. 出力は日本語のプレーンテキストのみ (JSON・Markdown 記法・説明的な前置きは付けない)。読み手は画面を一瞥する営業担当者なので、" +
-      "案件ごとに次の形で書く: 1 行目に「顧客名 / 案件名」、続けて「窓口」「社内担当」「状況」「リスク」「次アクション」「見込金額」「最終活動」を" +
-      "1 項目 1 行で「項目名: 値」の形に並べ、最後に 1〜2 文で要点をまとめる。データに無い項目は「(未設定)」「(記録なし)」のように" +
+      "案件ごとに次の形で書く: 1 行目に「顧客名 / 案件名」、続けて「窓口」「顧客連絡先」「社内担当」「状況」「リスク」「次アクション」「見込金額」「最終活動」を" +
+      "1 項目 1 行で「項目名: 値」の形に並べ、最後に 1〜2 文で要点をまとめる。窓口の役職・メール・電話はデータにある分をすべてそのまま書く" +
+      " (問い合わせ先が分かることが目的)。データに無い項目は「(未設定)」「(記録なし)」のように" +
       "データの表記のまま書き、省略も推測もしない。案件が複数ある場合は案件ごとにこのブロックを繰り返し、空行で区切る。",
     "",
     UNTRUSTED_RULE.replace("営業現場から投げ込まれた", "過去に営業現場から投げ込まれ、AI が要約した"),
@@ -276,7 +316,8 @@ export function buildAnswerRequest(input: AnswerInput): LlmRequest {
     : input.opportunities.map(o => [
         `- id=${o.id}`,
         `  顧客: ${o.accountName} / 案件: ${o.title}`,
-        `  窓口: ${o.contactNames.length > 0 ? o.contactNames.join("、") : "(未設定)"}`,
+        `  窓口: ${o.contacts.length > 0 ? o.contacts.map(formatContactJa).join("、") : "(未設定)"}`,
+        `  顧客連絡先: ${formatAccountContactJa(o.accountPhone, o.accountWebsiteUrl)}`,
         `  社内担当: ${o.ownerName}`,
         `  状態: ${statusLineJa(o.lifecycleState, o.operationalState)}${o.phaseLabel ? ` (${o.phaseLabel})` : ""}`,
         `  リスク: ${RISK_LABEL_JA[o.riskLevel]}${o.riskReason ? ` - ${o.riskReason}` : ""}`,

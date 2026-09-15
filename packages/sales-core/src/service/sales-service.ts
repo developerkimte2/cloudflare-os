@@ -19,7 +19,7 @@ import {
   addDays, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso,
 } from "../domain/util.js";
 import { loadConfig, saveConfig, type SalesConfig } from "../rules/config.js";
-import { ANSWER_PROMPT_VERSION, buildAnswerRequest } from "../ai/skills.js";
+import { ANSWER_PROMPT_VERSION, buildAnswerRequest, type AnswerOpportunity } from "../ai/skills.js";
 import { LlmError } from "../ai/provider.js";
 import { audit } from "../pipeline/audit.js";
 import { logEvent, type CoreContext } from "../pipeline/context.js";
@@ -180,16 +180,14 @@ export class SalesService {
     // Match on lightweight {id, accountName, title} refs first (one deduped account lookup per
     // distinct account, not summarize()'s ~4 queries per opportunity for all 500) and only
     // summarize() the handful actually chosen as context, below.
-    const accountNameCache = new Map<string, string>();
-    const accountNameOf = (accountId: string): string => {
-      let name = accountNameCache.get(accountId);
-      if (name === undefined) {
-        name = this.repo.getAccount(accountId)?.displayName ?? UNRESOLVED_ACCOUNT_NAME;
-        accountNameCache.set(accountId, name);
-      }
-      return name;
+    const accountCache = new Map<string, CustomerAccount | undefined>();
+    const accountOf = (accountId: string): CustomerAccount | undefined => {
+      if (!accountCache.has(accountId)) accountCache.set(accountId, this.repo.getAccount(accountId));
+      return accountCache.get(accountId);
     };
-    const refs = visible.map(o => ({ id: o.id, accountName: accountNameOf(o.accountId), title: o.title }));
+    const refs = visible.map(o => ({
+      id: o.id, accountName: accountOf(o.accountId)?.displayName ?? UNRESOLVED_ACCOUNT_NAME, title: o.title,
+    }));
     const matchedRefs = matchOpportunities(refs, q);
     // Nothing named in the question matched: fall back to recent activity so the AI can still say
     // something useful (or honestly say it couldn't find the case) instead of answering from nothing.
@@ -200,7 +198,7 @@ export class SalesService {
     const chosen = matchedByName
       ? matchedRefs.map(r => byId.get(r.id)!)
       : [...visible].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
-    const context = chosen.map(o => this.summarize(o));
+    const context = chosen.map(o => this.answerContext(this.summarize(o), accountOf(o.accountId)));
     const references = context.map(o => ({ id: o.id, accountName: o.accountName, title: o.title }));
     const request = buildAnswerRequest({
       referenceTime: nowIso(this.ctx.clock), timezone: user.timezone || this.config.defaultTimezone,
@@ -226,6 +224,19 @@ export class SalesService {
       logEvent(this.ctx, "question.answered", { status: "failed", error: message });
       return { answer: "", references, matchedByName, error: message };
     }
+  }
+
+  /**
+   * `summarize()` plus how to actually reach the 窓口 (title / email / phone) and the company
+   * (phone / website) — the summary only carries names. `contactPersonIds` is already filtered to
+   * persons of this same account by `summarize()`.
+   */
+  private answerContext(summary: OpportunitySummary, account: CustomerAccount | undefined): AnswerOpportunity {
+    const contacts = summary.contactPersonIds
+      .map(id => this.repo.getPerson(id))
+      .filter((p): p is CustomerPerson => !!p)
+      .map(p => ({ name: p.displayName, title: p.title, email: p.email, phone: p.phone }));
+    return { ...summary, contacts, accountPhone: account?.phone, accountWebsiteUrl: account?.websiteUrl };
   }
 
   /** Drops a source that was received but never processed (e.g. an approval was rejected). */

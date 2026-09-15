@@ -949,6 +949,30 @@ describe("askQuestion (capture box search mode)", () => {
     expect(llm.requests[0]!.json).toBeFalsy();
   });
 
+  // 2026-09-15: the answer named the 窓口 but not how to reach them, so a rep still had to open
+  // the customer page to find the phone/email. Hand the model every contact detail on file.
+  it("hands the model the 窓口's title/email/phone and the company's phone/website", async () => {
+    const llm = new FakeLlmProvider(["窓口は田中 太郎さんです。"]);
+    const svc = makeService(llm, NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const abc = makeAccount(svc.repo, {
+      displayName: "ABC株式会社", phone: "03-0000-1111", websiteUrl: "https://abc.example.com",
+    });
+    const tanaka = {
+      id: newId(), accountId: abc.id, displayName: "田中 太郎", title: "部長",
+      email: "tanaka@abc.co.jp", phone: "03-1234-5678", resolutionStatus: "MANUAL" as const,
+      createdAt: NOW, updatedAt: NOW,
+    };
+    svc.repo.insertPerson(tanaka);
+    makeOpportunity(svc.repo, abc.id, user.id, { title: "ABC株式会社 新機能提案", contactPersonIds: [tanaka.id] });
+
+    await svc.askQuestion({ userId: user.id }, "ABC株式会社の窓口は？");
+
+    const dump = llm.requests[0]!.user;
+    expect(dump).toContain("窓口: 田中 太郎 (部長、メール tanaka@abc.co.jp、電話 03-1234-5678)");
+    expect(dump).toContain("顧客連絡先: 電話 03-0000-1111、Web https://abc.example.com");
+  });
+
   it("falls back to recently-updated opportunities when no name matches, and tells the model/UI so", async () => {
     const llm = new FakeLlmProvider(["該当する案件は見つかりませんでしたが、直近の案件はこちらです。"]);
     const svc = makeService(llm, NOW);
@@ -1010,9 +1034,9 @@ describe("askQuestion (capture box search mode)", () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]).toEqual(["question.asked",
-      { kind: "matched", candidates: 1, promptVersion: "answer.v5" }]);
+      { kind: "matched", candidates: 1, promptVersion: "answer.v6" }]);
     expect(events[1]).toEqual(["question.answered",
-      { status: "ok", model: "fake-model", promptVersion: "answer.v5", outputTokens: undefined }]);
+      { status: "ok", model: "fake-model", promptVersion: "answer.v6", outputTokens: undefined }]);
     const serialized = JSON.stringify(events);
     expect(serialized).not.toContain("ABC株式会社の状況どうなっている");
     expect(serialized).not.toContain("見積送付待ち");
