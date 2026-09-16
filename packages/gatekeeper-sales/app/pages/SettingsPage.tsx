@@ -34,6 +34,7 @@ const TAX_ROUNDINGS: ConfigDto["taxRounding"][] = ["FLOOR", "ROUND", "CEIL"];
 export default function SettingsPage({
   api,
   who,
+  canAdminister,
 }: {
   api: RpcStub<SalesManagementApi>;
   who: {
@@ -41,6 +42,13 @@ export default function SettingsPage({
     ai: { provider: string; model: string; configured: boolean };
     slack: { configured: boolean; channel?: string };
   };
+  /**
+   * Sales OS's own ADMIN role (App.tsx's `user.role === "ADMIN"`) -- NOT `who.isAdmin`, which is
+   * Workshop's deployment-admin flag and unrelated to Sales OS roles. A Sales OS ADMIN who isn't a
+   * Workshop deployment admin could open this page (that gate already checks canAdminister) but
+   * then see none of its ADMIN-only sections if they were keyed off who.isAdmin instead.
+   */
+  canAdminister: boolean;
 }) {
   const runAction = useApiAction();
   const toasts = useKumoToastManager();
@@ -351,10 +359,10 @@ export default function SettingsPage({
       </Section>
 
       <Section title="商材">
-        <ProductTable api={api} canEdit={who.isAdmin} />
+        <ProductTable api={api} canEdit={canAdminister} />
       </Section>
 
-      {who.isAdmin && (
+      {canAdminister && (
         <Section title="企業DB連携 (Google スプレッドシート)">
           <p className="mb-1.5 text-xs text-kumo-subtle">
             会社名・法人番号・業種・住所・担当者（氏名・部署・役職・メール・電話）の一覧を持つ Google スプレッドシートの URL

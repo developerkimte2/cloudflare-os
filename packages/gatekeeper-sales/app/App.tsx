@@ -200,7 +200,7 @@ export default function App({ api, openPrompt }: Props) {
           {route.kind === "manager" && canManage && (
             <ManagerPage api={api} openPrompt={openPrompt} onOpenOpportunity={openOpportunity} />
           )}
-          {route.kind === "settings" && canAdminister && <SettingsPage api={api} who={who} />}
+          {route.kind === "settings" && canAdminister && <SettingsPage api={api} who={who} canAdminister={canAdminister} />}
         </main>
       </div>
     </div>
