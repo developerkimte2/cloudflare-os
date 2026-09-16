@@ -228,16 +228,18 @@ export class Repository {
   }
 
   /** Manager KPI tiles that are single-row aggregates -- plain SQL beats looping every row in JS. */
-  managerKpiAggregates(monthStart: string, now: string): {
-    expectedAmountTotal: number; wonThisMonth: number; lostThisMonth: number;
+  managerKpiAggregates(closedFrom: string, closedTo: string, now: string): {
+    expectedAmountTotal: number; wonThisMonth: number; wonAmountThisMonth: number; lostThisMonth: number;
     overdueActions: number; unresolvedCustomers: number;
   } {
     const amount = this.db.one<{ total: number }>(
       "SELECT COALESCE(SUM(expected_amount), 0) AS total FROM opportunities WHERE lifecycle_state = 'OPEN'")!;
-    const won = this.db.one<{ count: number }>(
-      "SELECT COUNT(*) AS count FROM opportunities WHERE lifecycle_state = 'WON' AND updated_at >= ?", monthStart)!;
+    const won = this.db.one<{ count: number; amount: number }>(
+      "SELECT COUNT(*) AS count, COALESCE(SUM(won_amount), 0) AS amount FROM opportunities " +
+      "WHERE lifecycle_state = 'WON' AND closed_at >= ? AND closed_at < ?", closedFrom, closedTo)!;
     const lost = this.db.one<{ count: number }>(
-      "SELECT COUNT(*) AS count FROM opportunities WHERE lifecycle_state = 'LOST' AND updated_at >= ?", monthStart)!;
+      "SELECT COUNT(*) AS count FROM opportunities WHERE lifecycle_state = 'LOST' AND closed_at >= ? AND closed_at < ?",
+      closedFrom, closedTo)!;
     // Mirrors getToday's "sleeping" rule: a SNOOZED action with a future wake-up doesn't count.
     const overdue = this.db.one<{ count: number }>(
       "SELECT COUNT(*) AS count FROM next_actions WHERE status IN ('OPEN','SNOOZED') " +
@@ -248,8 +250,8 @@ export class Repository {
       "JOIN opportunities o ON o.account_id = a.id " +
       "WHERE a.resolution_status = 'UNRESOLVED' AND o.lifecycle_state = 'OPEN'")!;
     return {
-      expectedAmountTotal: amount.total, wonThisMonth: won.count, lostThisMonth: lost.count,
-      overdueActions: overdue.count, unresolvedCustomers: unresolved.count,
+      expectedAmountTotal: amount.total, wonThisMonth: won.count, wonAmountThisMonth: won.amount,
+      lostThisMonth: lost.count, overdueActions: overdue.count, unresolvedCustomers: unresolved.count,
     };
   }
 

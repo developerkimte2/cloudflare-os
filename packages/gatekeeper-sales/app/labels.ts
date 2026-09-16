@@ -23,6 +23,17 @@ type UserRole = UserDto["role"];
 type AIDecisionType = OpportunityDetail["decisions"][number]["decisionType"];
 type AIDecisionStatus = OpportunityDetail["decisions"][number]["status"];
 type ActorType = AuditLog["actorType"];
+type LostReason = NonNullable<OpportunitySummary["lostReason"]>;
+
+export const LOST_REASON_LABEL: Record<LostReason, string> = {
+  PRICE: "価格",
+  COMPETITOR: "競合",
+  TIMING: "時期",
+  BUDGET: "予算",
+  NO_RESPONSE: "無反応",
+  NO_NEED: "ニーズ消失",
+  OTHER: "その他",
+};
 
 export const LIFECYCLE_LABEL: Record<LifecycleState, string> = {
   OPEN: "進行中",
@@ -180,9 +191,11 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   NEXT_ACTION_CREATED: "次アクションを作成",
   NEXT_ACTION_DUE_SET: "次アクションの期限を設定",
   NEXT_ACTION_UPDATED: "次アクションを更新",
+  OPPORTUNITY_CLOSED: "案件を確定 (受注/失注)",
   OPPORTUNITY_DELETED: "案件を削除",
   OPPORTUNITY_EDITED: "案件を編集",
   OPPORTUNITY_MERGED: "案件を統合",
+  OPPORTUNITY_REOPENED: "案件を再開",
   OPPORTUNITY_RESTORED: "案件を復元",
   PERSON_CREATED: "顧客担当者を追加",
   PERSON_UPDATED: "顧客担当者を更新",

@@ -12,8 +12,8 @@ import type {
 } from "../api/dto.js";
 import { toUserDto } from "../api/dto.js";
 import type {
-  AIDecision, Commitment, CustomerAccount, CustomerPerson, JsonValue, LifecycleState, NextAction,
-  NextActionType, Opportunity, Priority, ReviewItem, SourceDocument, User, UserRole,
+  AIDecision, Commitment, CustomerAccount, CustomerPerson, JsonValue, LifecycleState, LostReason,
+  NextAction, NextActionType, Opportunity, Priority, ReviewItem, SourceDocument, User, UserRole,
 } from "../domain/types.js";
 import {
   addDays, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso,
@@ -445,15 +445,51 @@ export class SalesService {
       next.ownerUserId = patch.ownerUserId;
     }
     if (patch.collaboratorUserIds !== undefined) next.collaboratorUserIds = patch.collaboratorUserIds;
+    if (patch.wonAmount !== undefined) next.wonAmount = patch.wonAmount ?? undefined;
+    if (patch.closedAt !== undefined) next.closedAt = patch.closedAt ?? undefined;
+    if (patch.lostReason !== undefined) next.lostReason = patch.lostReason ?? undefined;
+    if (patch.lostReasonNote !== undefined) next.lostReasonNote = cleanText(patch.lostReasonNote);
+    if (patch.competitor !== undefined) next.competitor = cleanText(patch.competitor);
+    const closeChange = this.applyCloseRules(o, next, user.timezone || this.config.defaultTimezone);
     next.updatedAt = nowIso(this.ctx.clock);
     return this.repo.transaction(() => {
       if (!this.repo.updateOpportunity(next, patch.version)) {
         throw new Error("案件が他のユーザーによって更新されています。再読込してください");
       }
-      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "OPPORTUNITY_EDITED",
+      audit(this.ctx, { actorType: "USER", actorId: user.id,
+        action: closeChange === "CLOSED" ? "OPPORTUNITY_CLOSED"
+          : closeChange === "REOPENED" ? "OPPORTUNITY_REOPENED" : "OPPORTUNITY_EDITED",
         entityType: "opportunity", entityId: id, before: diffable(before), after: diffable(next) });
       return this.summarize(this.repo.getOpportunity(id)!);
     });
+  }
+
+  /**
+   * What a person must supply when a deal closes, and what gets cleared when it reopens.
+   * Returns which of the two happened so the caller can pick the audit action.
+   */
+  private applyCloseRules(before: Opportunity, next: Opportunity, timezone: string): "CLOSED" | "REOPENED" | undefined {
+    const isClosed = (s: LifecycleState) => s === "WON" || s === "LOST";
+    if (next.lifecycleState === before.lifecycleState) return undefined;
+    if (isClosed(next.lifecycleState)) {
+      if (!next.closedAt) next.closedAt = localDate(nowIso(this.ctx.clock), timezone);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(next.closedAt)) throw new TypeError("日付は YYYY-MM-DD で入力してください");
+      if (next.lifecycleState === "WON") {
+        if (next.wonAmount === undefined) next.wonAmount = next.expectedAmount;
+        if (next.wonAmount === undefined) throw new TypeError("受注額を入力してください");
+        next.lostReason = undefined; next.lostReasonNote = undefined;
+      } else {
+        if (!next.lostReason) throw new TypeError("失注理由を選んでください");
+        next.wonAmount = undefined;
+      }
+      return "CLOSED";
+    }
+    if (isClosed(before.lifecycleState)) {
+      next.closedAt = undefined; next.wonAmount = undefined; next.lostReason = undefined;
+      next.lostReasonNote = undefined; next.competitor = undefined;
+      return "REOPENED";
+    }
+    return undefined;
   }
 
   // ---- customers -------------------------------------------------------------------------------------
@@ -738,8 +774,21 @@ export class SalesService {
           break;
         case "STATE_AMBIGUOUS":
           if (typeof value.lifecycleState === "string") {
+            const today = localDate(now, user.timezone || this.config.defaultTimezone);
             this.setOpportunityField(user, review.relatedEntityId!, o => {
-              o.lifecycleState = value.lifecycleState as LifecycleState;
+              const next = value.lifecycleState as LifecycleState;
+              const wasClosed = o.lifecycleState === "WON" || o.lifecycleState === "LOST";
+              o.lifecycleState = next;
+              if (next === "WON") {
+                o.closedAt = o.closedAt ?? today; o.wonAmount = o.wonAmount ?? o.expectedAmount;
+                o.lostReason = undefined; o.lostReasonNote = undefined;
+              } else if (next === "LOST") {
+                o.closedAt = o.closedAt ?? today; o.lostReason = o.lostReason ?? "OTHER";
+                o.lostReasonNote = o.lostReasonNote ?? "AI 判定の確認から確定 (理由は未入力)"; o.wonAmount = undefined;
+              } else if (wasClosed) {
+                o.closedAt = undefined; o.wonAmount = undefined; o.lostReason = undefined;
+                o.lostReasonNote = undefined; o.competitor = undefined;
+              }
             }, "LIFECYCLE_CONFIRMED");
           }
           break;
@@ -839,9 +888,12 @@ export class SalesService {
     const highRisk = open.filter(o => o.riskLevel === "HIGH");
     const openReviews = this.repo.listReviews("OPEN").length;
 
-    const monthStart = startOfLocalMonth(now, this.config.defaultTimezone);
+    const tz = this.config.defaultTimezone;
+    const monthStart = startOfLocalMonth(now, tz);
+    const monthFrom = localDate(monthStart, tz);                        // YYYY-MM-01
+    const monthTo = localDate(startOfLocalMonth(addDays(monthStart, 35), tz), tz);  // 翌月 01
     const weekAgo = addDays(now, -7);
-    const aggregates = this.repo.managerKpiAggregates(monthStart, now);
+    const aggregates = this.repo.managerKpiAggregates(monthFrom, monthTo, now);
     const perUserStats = this.repo.managerPerUserStats(now, stalledBefore, weekAgo);
     const users = this.repo.listUsers();
     const perUser: ManagerPerUserRow[] = users
@@ -866,6 +918,7 @@ export class SalesService {
       kpis: {
         openOpportunities: open.length, expectedAmountTotal: aggregates.expectedAmountTotal,
         currency: this.config.defaultCurrency, wonThisMonth: aggregates.wonThisMonth,
+        wonAmountThisMonth: aggregates.wonAmountThisMonth,
         lostThisMonth: aggregates.lostThisMonth, stalled: stalled.length, highRisk: highRisk.length,
         overdueActions: aggregates.overdueActions, unresolvedCustomers: aggregates.unresolvedCustomers,
         openReviews,
@@ -939,6 +992,8 @@ export class SalesService {
       phaseLabel: o.phaseLabel, expectedAmount: o.expectedAmount, currency: o.currency,
       expectedCloseDate: o.expectedCloseDate, proposalDocumentUrl: o.proposalDocumentUrl,
       riskLevel: o.riskLevel, riskReason: o.riskReason,
+      wonAmount: o.wonAmount, closedAt: o.closedAt, lostReason: o.lostReason,
+      lostReasonNote: o.lostReasonNote, competitor: o.competitor,
       currentSituation: snapshot?.currentSituation,
       nextAction: nextAction && nextAction.status === "OPEN" ? nextAction : undefined,
       lastMeaningfulActivityAt: o.lastMeaningfulActivityAt,

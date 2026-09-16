@@ -45,6 +45,8 @@ export const opportunities = new Table<Opportunity>("opportunities", "id", [
   col("last_context_recomputed_at", "lastContextRecomputedAt"), col("risk_level", "riskLevel"),
   col("risk_reason", "riskReason"), col("version", "version"), col("created_at", "createdAt"),
   col("updated_at", "updatedAt"),
+  col("won_amount", "wonAmount"), col("closed_at", "closedAt"), col("lost_reason", "lostReason"),
+  col("lost_reason_note", "lostReasonNote"), col("competitor", "competitor"),
 ]);
 
 export const sourceDocuments = new Table<SourceDocument>("source_documents", "id", [

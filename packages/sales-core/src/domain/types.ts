@@ -73,6 +73,10 @@ export interface CustomerPerson {
 
 export type LifecycleState = "OPEN" | "WON" | "LOST" | "ON_HOLD" | "CLOSED";
 
+/** Why a deal was lost. Chosen by a person when the deal is marked LOST -- never by the AI. */
+export type LostReason = "PRICE" | "COMPETITOR" | "TIMING" | "BUDGET" | "NO_RESPONSE" | "NO_NEED" | "OTHER";
+export const LOST_REASONS: LostReason[] = ["PRICE", "COMPETITOR", "TIMING", "BUDGET", "NO_RESPONSE", "NO_NEED", "OTHER"];
+
 export type OperationalState =
   | "UNKNOWN"
   | "ACTIVE"
@@ -100,6 +104,16 @@ export interface Opportunity {
   expectedCloseDate?: string;
   /** Free-form link to the proposal/quote material for this deal (Drive, Slides, etc.). */
   proposalDocumentUrl?: string;
+  /**
+   * Close details, entered by a person when the deal becomes WON/LOST and cleared when it is
+   * reopened. The AI never writes these (it may only propose a lifecycle change for review).
+   */
+  wonAmount?: number;
+  /** YYYY-MM-DD in the closing user's timezone. Drives "won this period" KPIs, not updatedAt. */
+  closedAt?: string;
+  lostReason?: LostReason;
+  lostReasonNote?: string;
+  competitor?: string;
   /** This deal's 窓口: ids into customer_persons, always of this opportunity's own account. */
   contactPersonIds?: string[];
   nextActionId?: string;

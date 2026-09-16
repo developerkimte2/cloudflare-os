@@ -334,6 +334,17 @@ UPDATE opportunities SET contact_person_ids = (
 ALTER TABLE source_documents ADD COLUMN target_opportunity_id TEXT;
 `,
   },
+  {
+    id: "0007_opportunity_close_details",
+    sql: `
+ALTER TABLE opportunities ADD COLUMN won_amount REAL;
+ALTER TABLE opportunities ADD COLUMN closed_at TEXT;
+ALTER TABLE opportunities ADD COLUMN lost_reason TEXT;
+ALTER TABLE opportunities ADD COLUMN lost_reason_note TEXT;
+ALTER TABLE opportunities ADD COLUMN competitor TEXT;
+CREATE INDEX idx_opportunities_closed_at ON opportunities(closed_at);
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

@@ -44,6 +44,7 @@ import {
   DECISION_TYPE_LABEL,
   ENTITY_TYPE_LABEL,
   LIFECYCLE_LABEL,
+  LOST_REASON_LABEL,
   NEXT_ACTION_TYPE_LABEL,
   PRIORITY_LABEL,
   RISK_LABEL,
@@ -51,6 +52,8 @@ import {
 
 type LifecycleState = OpportunityDetail["lifecycleState"];
 const LIFECYCLE_STATES: LifecycleState[] = ["OPEN", "WON", "LOST", "ON_HOLD", "CLOSED"];
+type LostReason = NonNullable<OpportunityDetail["lostReason"]>;
+const LOST_REASONS: LostReason[] = ["PRICE", "COMPETITOR", "TIMING", "BUDGET", "NO_RESPONSE", "NO_NEED", "OTHER"];
 
 export default function OpportunityDetailPage({
   api,
@@ -314,6 +317,7 @@ function OpportunityHeader({
   onOpenCustomer: (accountId: string) => void;
   onSave: (patch: OpportunityPatch) => void | Promise<void>;
 }) {
+  const INPUT = "h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default";
   const toasts = useKumoToastManager();
   const copyReport = async () => {
     const text = buildOpportunityReport(opportunity, timezone);
@@ -337,6 +341,13 @@ function OpportunityHeader({
   const [proposalDocumentUrl, setProposalDocumentUrl] = useState(opportunity.proposalDocumentUrl ?? "");
   const [lifecycleState, setLifecycleState] = useState<LifecycleState>(opportunity.lifecycleState);
   const [ownerUserId, setOwnerUserId] = useState(opportunity.ownerUserId);
+  const [wonAmount, setWonAmount] = useState(
+    opportunity.wonAmount != null ? String(opportunity.wonAmount) : opportunity.expectedAmount != null ? String(opportunity.expectedAmount) : "",
+  );
+  const [closedAt, setClosedAt] = useState(opportunity.closedAt ?? "");
+  const [lostReason, setLostReason] = useState<LostReason | "">(opportunity.lostReason ?? "");
+  const [lostReasonNote, setLostReasonNote] = useState(opportunity.lostReasonNote ?? "");
+  const [competitor, setCompetitor] = useState(opportunity.competitor ?? "");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -347,10 +358,28 @@ function OpportunityHeader({
     setProposalDocumentUrl(opportunity.proposalDocumentUrl ?? "");
     setLifecycleState(opportunity.lifecycleState);
     setOwnerUserId(opportunity.ownerUserId);
+    setWonAmount(
+      opportunity.wonAmount != null ? String(opportunity.wonAmount) : opportunity.expectedAmount != null ? String(opportunity.expectedAmount) : "",
+    );
+    setClosedAt(opportunity.closedAt ?? "");
+    setLostReason(opportunity.lostReason ?? "");
+    setLostReasonNote(opportunity.lostReasonNote ?? "");
+    setCompetitor(opportunity.competitor ?? "");
   }, [opportunity]);
 
   const amountChanged =
     expectedAmount.trim() !== (opportunity.expectedAmount != null ? String(opportunity.expectedAmount) : "");
+  // Close details are only ever part of the patch for a deal that is (or is becoming) WON/LOST --
+  // an OPEN deal has no wonAmount/closedAt/lostReason to send.
+  const isClosedState = (s: LifecycleState) => s === "WON" || s === "LOST";
+  const closeDetailsRelevant = isClosedState(lifecycleState) || isClosedState(opportunity.lifecycleState);
+  const closeDetailsChanged = closeDetailsRelevant && (
+    wonAmount.trim() !== (opportunity.wonAmount != null ? String(opportunity.wonAmount) : "") ||
+    closedAt !== (opportunity.closedAt ?? "") ||
+    lostReason !== (opportunity.lostReason ?? "") ||
+    lostReasonNote !== (opportunity.lostReasonNote ?? "") ||
+    competitor !== (opportunity.competitor ?? "")
+  );
   const dirty =
     title !== opportunity.title ||
     phaseLabel !== (opportunity.phaseLabel ?? "") ||
@@ -358,7 +387,8 @@ function OpportunityHeader({
     expectedCloseDate !== (opportunity.expectedCloseDate ?? "") ||
     proposalDocumentUrl !== (opportunity.proposalDocumentUrl ?? "") ||
     lifecycleState !== opportunity.lifecycleState ||
-    ownerUserId !== opportunity.ownerUserId;
+    ownerUserId !== opportunity.ownerUserId ||
+    closeDetailsChanged;
 
   const buildPatch = (): OpportunityPatch => ({
     title: title !== opportunity.title ? title : undefined,
@@ -370,6 +400,15 @@ function OpportunityHeader({
       proposalDocumentUrl !== (opportunity.proposalDocumentUrl ?? "") ? proposalDocumentUrl || null : undefined,
     lifecycleState: lifecycleState !== opportunity.lifecycleState ? lifecycleState : undefined,
     ownerUserId: ownerUserId !== opportunity.ownerUserId ? ownerUserId : undefined,
+    ...(closeDetailsRelevant
+      ? {
+          wonAmount: wonAmount === "" ? null : Number(wonAmount),
+          closedAt: closedAt || null,
+          lostReason: lostReason || null,
+          lostReasonNote: lostReasonNote || null,
+          competitor: competitor || null,
+        }
+      : {}),
     version: opportunity.version,
   });
 
@@ -384,6 +423,7 @@ function OpportunityHeader({
 
   const closingOut =
     lifecycleState !== opportunity.lifecycleState && (lifecycleState === "WON" || lifecycleState === "LOST");
+  const alreadyClosed = !closingOut && isClosedState(opportunity.lifecycleState);
 
   return (
     <header className="rounded-xl border border-kumo-line bg-kumo-control p-4">
@@ -415,6 +455,14 @@ function OpportunityHeader({
       >
         {opportunity.accountName}
       </button>
+
+      {alreadyClosed && (
+        <p className="mt-1 text-xs font-medium text-kumo-default">
+          {opportunity.lifecycleState === "WON"
+            ? `受注 ${opportunity.closedAt ?? ""} / ${opportunity.wonAmount != null ? opportunity.wonAmount.toLocaleString("ja-JP") : "?"}円`
+            : `失注 ${opportunity.closedAt ?? ""} / ${opportunity.lostReason ? LOST_REASON_LABEL[opportunity.lostReason] : "(理由未設定)"}`}
+        </p>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Field label="フェーズ">
@@ -476,6 +524,37 @@ function OpportunityHeader({
             className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
           />
         </Field>
+        {alreadyClosed && (
+          <>
+            <Field label={opportunity.lifecycleState === "WON" ? "受注日" : "失注日"}>
+              <input type="date" value={closedAt} onChange={(event) => setClosedAt(event.currentTarget.value)} className={INPUT} />
+            </Field>
+            {opportunity.lifecycleState === "WON" ? (
+              <Field label="受注額 (税抜・円)">
+                <input type="number" min={0} step={1} value={wonAmount} onChange={(event) => setWonAmount(event.currentTarget.value)} className={INPUT} />
+              </Field>
+            ) : (
+              <Field label="失注理由">
+                <select value={lostReason} onChange={(event) => setLostReason(event.currentTarget.value as LostReason | "")} className={INPUT}>
+                  <option value="">選んでください</option>
+                  {LOST_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {LOST_REASON_LABEL[r]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {opportunity.lifecycleState === "LOST" && (
+              <Field label="理由メモ">
+                <input value={lostReasonNote} onChange={(event) => setLostReasonNote(event.currentTarget.value)} className={INPUT} />
+              </Field>
+            )}
+            <Field label="競合 (任意)">
+              <input value={competitor} onChange={(event) => setCompetitor(event.currentTarget.value)} className={INPUT} />
+            </Field>
+          </>
+        )}
       </div>
       <p className="mt-3 text-xs text-kumo-subtle">
         顧客窓口:{" "}
@@ -488,14 +567,50 @@ function OpportunityHeader({
 
       <div className="mt-4 flex justify-end">
         {closingOut ? (
-          <ConfirmInline
-            label="保存"
-            confirmText={`本当に「${LIFECYCLE_LABEL[lifecycleState]}」に変更しますか？`}
-            confirmLabel="変更して保存"
-            tone="neutral"
-            disabled={!dirty || saving}
-            onConfirm={doSave}
-          />
+          <div className="w-full rounded-lg border border-kumo-line bg-kumo-tint p-3">
+            <p className="text-sm font-medium text-kumo-default">
+              「{LIFECYCLE_LABEL[lifecycleState]}」として確定します。
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <Field label={lifecycleState === "WON" ? "受注日" : "失注日"}>
+                <input type="date" value={closedAt} onChange={(event) => setClosedAt(event.currentTarget.value)} className={INPUT} />
+              </Field>
+              {lifecycleState === "WON" ? (
+                <Field label="受注額 (税抜・円)">
+                  <input type="number" min={0} step={1} value={wonAmount} onChange={(event) => setWonAmount(event.currentTarget.value)} className={INPUT} />
+                </Field>
+              ) : (
+                <Field label="失注理由">
+                  <select value={lostReason} onChange={(event) => setLostReason(event.currentTarget.value as LostReason | "")} className={INPUT}>
+                    <option value="">選んでください</option>
+                    {LOST_REASONS.map((r) => (
+                      <option key={r} value={r}>
+                        {LOST_REASON_LABEL[r]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {lifecycleState === "LOST" && (
+                <Field label="理由メモ">
+                  <input value={lostReasonNote} onChange={(event) => setLostReasonNote(event.currentTarget.value)} className={INPUT} />
+                </Field>
+              )}
+              <Field label="競合 (任意)">
+                <input value={competitor} onChange={(event) => setCompetitor(event.currentTarget.value)} className={INPUT} />
+              </Field>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                disabled={saving || (lifecycleState === "LOST" && !lostReason) || (lifecycleState === "WON" && wonAmount === "")}
+                onClick={() => void doSave()}
+                className="press rounded-lg bg-kumo-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-kumo-brand-hover disabled:opacity-50"
+              >
+                確定して保存
+              </button>
+            </div>
+          </div>
         ) : (
           <button
             type="button"

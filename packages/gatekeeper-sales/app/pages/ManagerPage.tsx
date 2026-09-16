@@ -124,7 +124,7 @@ function KpiTiles({ kpis }: { kpis: ManagerKpis }) {
   const tiles: Array<{ label: string; value: string }> = [
     { label: "進行中", value: String(kpis.openOpportunities) },
     { label: "見込金額", value: `${kpis.expectedAmountTotal.toLocaleString("ja-JP")} ${kpis.currency}` },
-    { label: "今月受注", value: String(kpis.wonThisMonth) },
+    { label: "今月受注", value: `${kpis.wonThisMonth} 件 / ${kpis.wonAmountThisMonth.toLocaleString("ja-JP")}円` },
     { label: "今月失注", value: String(kpis.lostThisMonth) },
     { label: "停滞", value: String(kpis.stalled) },
     { label: "高リスク", value: String(kpis.highRisk) },

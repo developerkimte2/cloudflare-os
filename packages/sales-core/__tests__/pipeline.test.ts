@@ -1130,3 +1130,58 @@ describe("askQuestion (capture box search mode)", () => {
     expect(elapsedMs).toBeLessThan(1000);
   });
 });
+
+describe("closing a deal (C1)", () => {
+  function setup() {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const user = makeUser(svc.repo, "SALES");
+    const account = makeAccount(svc.repo);
+    const opp = makeOpportunity(svc.repo, account.id, user.id, { expectedAmount: 500000 });
+    return { svc, actor: { userId: user.id }, opp };
+  }
+
+  it("WON defaults wonAmount to expectedAmount and closedAt to today; audit says OPPORTUNITY_CLOSED", () => {
+    const { svc, actor, opp } = setup();
+    const saved = svc.updateOpportunity(actor, opp.id, { lifecycleState: "WON", version: 1 });
+    expect(saved.wonAmount).toBe(500000);
+    expect(saved.closedAt).toBe("2026-09-08");   // NOW = 2026-09-08T01:00Z → JST 10:00
+    const audit = svc.getOpportunity(actor, opp.id).audit;
+    expect(audit.some(a => a.action === "OPPORTUNITY_CLOSED")).toBe(true);
+  });
+
+  it("WON without any amount is rejected", () => {
+    const { svc, actor, opp } = setup();
+    svc.updateOpportunity(actor, opp.id, { expectedAmount: null, version: 1 });
+    expect(() => svc.updateOpportunity(actor, opp.id, { lifecycleState: "WON", version: 2 })).toThrow(/受注額/);
+  });
+
+  it("LOST requires a reason", () => {
+    const { svc, actor, opp } = setup();
+    expect(() => svc.updateOpportunity(actor, opp.id, { lifecycleState: "LOST", version: 1 })).toThrow(/失注理由/);
+    const saved = svc.updateOpportunity(actor, opp.id, { lifecycleState: "LOST", lostReason: "PRICE", competitor: "X社", version: 1 });
+    expect(saved.lostReason).toBe("PRICE");
+    expect(saved.wonAmount).toBeUndefined();
+  });
+
+  it("reopening clears every close detail and audits OPPORTUNITY_REOPENED", () => {
+    const { svc, actor, opp } = setup();
+    const won = svc.updateOpportunity(actor, opp.id, { lifecycleState: "WON", closedAt: "2026-08-31", version: 1 });
+    const reopened = svc.updateOpportunity(actor, opp.id, { lifecycleState: "OPEN", version: won.version });
+    expect(reopened.closedAt).toBeUndefined();
+    expect(reopened.wonAmount).toBeUndefined();
+    expect(svc.getOpportunity(actor, opp.id).audit.some(a => a.action === "OPPORTUNITY_REOPENED")).toBe(true);
+  });
+
+  it("team KPIs count WON by closedAt in the current month, with the won amount", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const manager = makeUser(svc.repo, "MANAGER");
+    const account = makeAccount(svc.repo);
+    const thisMonth = makeOpportunity(svc.repo, account.id, manager.id, { expectedAmount: 100 });
+    const lastMonth = makeOpportunity(svc.repo, account.id, manager.id, { expectedAmount: 900 });
+    svc.updateOpportunity({ userId: manager.id }, thisMonth.id, { lifecycleState: "WON", closedAt: "2026-09-02", version: 1 });
+    svc.updateOpportunity({ userId: manager.id }, lastMonth.id, { lifecycleState: "WON", closedAt: "2026-08-30", version: 1 });
+    const kpis = svc.getManagerSummary({ userId: manager.id }).kpis;
+    expect(kpis.wonThisMonth).toBe(1);
+    expect(kpis.wonAmountThisMonth).toBe(100);
+  });
+});

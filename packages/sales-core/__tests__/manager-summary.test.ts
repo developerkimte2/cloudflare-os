@@ -45,9 +45,11 @@ describe("getManagerSummary: KPIs and per-rep table", () => {
     });
     makeOpportunity(repo, account.id, hanako.id, {
       lifecycleState: "WON", updatedAt: "2026-09-10T00:00:00.000Z",
+      closedAt: "2026-09-10", wonAmount: 300_000,
     });
     makeOpportunity(repo, account.id, hanako.id, {
       lifecycleState: "LOST", updatedAt: "2026-08-01T00:00:00.000Z",
+      closedAt: "2026-08-01", lostReason: "PRICE",
     });
     const review: ReviewItem = {
       id: newId(), type: "OTHER", assignedUserId: hanako.id, question: "確認してください",
@@ -66,6 +68,7 @@ describe("getManagerSummary: KPIs and per-rep table", () => {
       expectedAmountTotal: 1_500_000,
       currency: "JPY",
       wonThisMonth: 1,
+      wonAmountThisMonth: 300_000,
       lostThisMonth: 0,
       stalled: 1,
       highRisk: 1,

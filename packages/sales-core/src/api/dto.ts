@@ -4,8 +4,8 @@
  */
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, Commitment, CustomerAccount, CustomerPerson,
-  JsonValue, LifecycleState, NextAction, NextActionStatus, NextActionType, Opportunity, Priority,
-  ReviewItem, SourceDocument, SourceType, User, UserRole,
+  JsonValue, LifecycleState, LostReason, NextAction, NextActionStatus, NextActionType, Opportunity,
+  Priority, ReviewItem, SourceDocument, SourceType, User, UserRole,
 } from "../domain/types.js";
 import type { SalesConfig } from "../rules/config.js";
 
@@ -126,6 +126,12 @@ export interface OpportunitySummary {
   proposalDocumentUrl?: string;
   riskLevel: Opportunity["riskLevel"];
   riskReason?: string;
+  /** Close details (see Opportunity). Set once the deal is WON/LOST; cleared on reopen. */
+  wonAmount?: number;
+  closedAt?: string;
+  lostReason?: LostReason;
+  lostReasonNote?: string;
+  competitor?: string;
   currentSituation?: string;
   nextAction?: NextAction;
   lastMeaningfulActivityAt?: string;
@@ -180,6 +186,12 @@ export interface OpportunityPatch {
   lifecycleState?: LifecycleState;
   ownerUserId?: string;
   collaboratorUserIds?: string[];
+  /** Close details (see Opportunity). Required by the service when the state changes to WON/LOST. */
+  wonAmount?: number | null;
+  closedAt?: string | null;
+  lostReason?: LostReason | null;
+  lostReasonNote?: string | null;
+  competitor?: string | null;
   /** Optimistic concurrency: must equal the version the caller last saw. */
   version: number;
 }
@@ -283,9 +295,9 @@ export interface ManagerKpis {
   openOpportunities: number;
   expectedAmountTotal: number;
   currency: string;
-  /** Lifecycle flipped to WON/LOST this month, approximated by `updatedAt` (there's no separate
-   * close-date field) -- the UI labels this "更新月ベース". */
+  /** Deals whose closedAt falls in the current local month (a person's close date, not updatedAt). */
   wonThisMonth: number;
+  wonAmountThisMonth: number;
   lostThisMonth: number;
   stalled: number;
   highRisk: number;

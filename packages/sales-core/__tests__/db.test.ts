@@ -57,6 +57,7 @@ describe("migration 0005_opportunity_contact_person_ids backfill", () => {
 
     const applied = migrate(db, MIGRATIONS.slice(0, 5)); // stop after 0005: this test is only about that one
     expect(applied).toEqual(["0005_opportunity_contact_person_ids"]);
+    migrate(db); // apply the rest: Repository/Table map against the full current schema
     const repo = new Repository(db);
     expect(repo.getOpportunity("o1")!.contactPersonIds).toEqual(["p1"]);
     expect(repo.getOpportunity("o2")!.contactPersonIds).toEqual([]);
