@@ -4,7 +4,8 @@
  * here is synchronous except the steps that call the LLM.
  */
 import type {
-  AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
+  AccountPatch, AccountSummary, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult,
+  ConfigDto,
   CustomerDetail, LineItemInput, ManagerPerUserRow, ManagerSummary, ManagerSummaryQuery,
   NextActionFilter, NextActionInput,
   NextActionPatch, NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch,
@@ -406,6 +407,7 @@ export class SalesService {
     return {
       ...this.summarize(o),
       account,
+      accountSummary: this.accountSummaryFor(user, account.id),
       persons: this.repo.listPersonsForAccount(account.id),
       lineItems,
       totals: lineTotals(lineItems, this.config),
@@ -1082,6 +1084,23 @@ export class SalesService {
   private canSeeAccount(user: User, accountId: string): boolean {
     if (user.role !== "SALES") return true;
     return this.repo.listOpportunitiesVisibleTo(user, { accountId, limit: 1 }).length > 0;
+  }
+
+  /**
+   * This account's OPEN deals, scoped to what `user` can see (mirrors getManagerSummary's stalled
+   * / high-risk rules so the two screens never disagree about what counts as stalled).
+   */
+  private accountSummaryFor(user: User, accountId: string): AccountSummary {
+    const now = nowIso(this.ctx.clock);
+    const stalledBefore = addDays(now, -this.config.stalledDays);
+    const open = this.repo.listOpportunitiesVisibleTo(user, { accountId, lifecycleStates: ["OPEN"], limit: 500 });
+    return {
+      openCount: open.length,
+      expectedAmountTotal: open.reduce((sum, o) => sum + (o.expectedAmount ?? 0), 0),
+      currency: this.config.defaultCurrency,
+      stalledCount: open.filter(o => (o.lastMeaningfulActivityAt ?? o.createdAt) < stalledBefore).length,
+      highRiskCount: open.filter(o => o.riskLevel === "HIGH").length,
+    };
   }
 
   summarize(o: Opportunity): OpportunitySummary {

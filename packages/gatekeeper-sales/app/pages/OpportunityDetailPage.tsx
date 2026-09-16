@@ -213,6 +213,13 @@ export default function OpportunityDetailPage({
         />
       </div>
 
+      <Section title="概要">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <DealSummaryCard opportunity={data} timezone={timezone} />
+          <AccountSummaryCard summary={data.accountSummary} onOpenCustomer={() => onOpenCustomer(data.accountId)} />
+        </div>
+      </Section>
+
       <Section title="明細">
         <LineItemsSection detail={data} api={api} onSaved={reload} />
       </Section>
@@ -640,6 +647,81 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1 block text-[11px] font-medium text-kumo-inactive">{label}</span>
       {children}
     </label>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Summary cards (numeric at-a-glance view -- separate from ContextSection's AI-written narrative)
+// ---------------------------------------------------------------------------
+
+function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium text-kumo-inactive">{label}</p>
+      <p className={`mt-0.5 text-sm font-medium ${tone === "danger" ? "text-kumo-danger" : "text-kumo-default"}`}>{value}</p>
+    </div>
+  );
+}
+
+/** This deal's own numbers -- amount, state, next action, risk -- in one glance. */
+function DealSummaryCard({ opportunity, timezone }: { opportunity: OpportunityDetail; timezone: string }) {
+  const amountLabel = opportunity.lifecycleState === "WON" ? "受注額" : "見込金額";
+  const amount = opportunity.lifecycleState === "WON" ? opportunity.wonAmount : opportunity.expectedAmount;
+  return (
+    <div className="rounded-xl border border-kumo-line bg-kumo-control p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">この案件</p>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <SummaryStat
+          label={amountLabel}
+          value={amount != null ? `${amount.toLocaleString("ja-JP")} ${opportunity.currency ?? "JPY"}` : "未設定"}
+        />
+        <SummaryStat label="状態" value={LIFECYCLE_LABEL[opportunity.lifecycleState]} />
+        <SummaryStat
+          label="次アクション"
+          value={
+            opportunity.nextAction
+              ? `${opportunity.nextAction.title}${opportunity.nextAction.dueAt ? ` (${formatDate(opportunity.nextAction.dueAt, timezone)})` : ""}`
+              : "なし"
+          }
+        />
+        <SummaryStat
+          label="リスク"
+          value={`${RISK_LABEL[opportunity.riskLevel]}${opportunity.riskReason ? ` - ${opportunity.riskReason}` : ""}`}
+          tone={opportunity.riskLevel === "HIGH" ? "danger" : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** The customer's numbers across every deal this viewer can see (not just this one). */
+function AccountSummaryCard({
+  summary,
+  onOpenCustomer,
+}: {
+  summary: OpportunityDetail["accountSummary"];
+  onOpenCustomer: () => void;
+}) {
+  const warnings = [
+    summary.stalledCount > 0 ? `停滞 ${summary.stalledCount} 件` : undefined,
+    summary.highRiskCount > 0 ? `高リスク ${summary.highRiskCount} 件` : undefined,
+  ].filter((s): s is string => !!s);
+  return (
+    <div className="rounded-xl border border-kumo-line bg-kumo-control p-4">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">この企業</p>
+        <button type="button" onClick={onOpenCustomer} className="text-xs text-kumo-link hover:underline">
+          全案件 →
+        </button>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <SummaryStat label="進行中案件" value={`${summary.openCount} 件`} />
+        <SummaryStat label="見込金額合計" value={`${summary.expectedAmountTotal.toLocaleString("ja-JP")} ${summary.currency}`} />
+      </div>
+      {warnings.length > 0 && (
+        <p className="mt-3 text-xs font-medium text-kumo-danger">⚠ {warnings.join("・")}</p>
+      )}
+    </div>
   );
 }
 

@@ -145,8 +145,22 @@ export interface OpportunitySummary {
   version: number;
 }
 
+/**
+ * This deal's customer at a glance, scoped to what the caller can see (a SALES user only sees
+ * their own/collaborated deals for this account). Shown on the deal page next to 顧客情報 so a
+ * rep doesn't have to open the customer page just to see how big this account is.
+ */
+export interface AccountSummary {
+  openCount: number;
+  expectedAmountTotal: number;
+  currency: string;
+  stalledCount: number;
+  highRiskCount: number;
+}
+
 export interface OpportunityDetail extends OpportunitySummary {
   account: CustomerAccount;
+  accountSummary: AccountSummary;
   persons: CustomerPerson[];
   lineItems: OpportunityLineItem[];
   totals: LineTotals;

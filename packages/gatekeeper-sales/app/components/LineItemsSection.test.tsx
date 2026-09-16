@@ -22,6 +22,7 @@ function detail(overrides: Partial<OpportunityDetail> = {}): OpportunityDetail {
     collaboratorUserIds: [], contactPersonIds: [], contactNames: [], lifecycleState: "OPEN",
     operationalState: "ACTIVE", riskLevel: "NONE", hasLineItems: false, updatedAt: "2026-09-01T00:00:00.000Z",
     version: 1, account: { id: "a1" } as OpportunityDetail["account"], persons: [],
+    accountSummary: { openCount: 1, expectedAmountTotal: 0, currency: "JPY", stalledCount: 0, highRiskCount: 0 },
     lineItems: [], totals: { subtotal: 0, tax: 0, total: 0 }, nextActions: [], suggestions: [],
     commitments: [], activities: [], sources: [], decisions: [], reviews: [], audit: [],
     ...overrides,

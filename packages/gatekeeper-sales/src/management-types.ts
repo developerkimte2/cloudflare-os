@@ -7,7 +7,7 @@
  * account is not yet bound to a Sales OS user, only `whoAmI()` and `register()` succeed.
  */
 import type {
-  AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
   ManagerSummary, ManagerSummaryQuery, NextAction,
@@ -19,7 +19,7 @@ import type {
 } from "@gadgets/sales-core";
 
 export type {
-  AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
   ManagerSummary, ManagerSummaryQuery, NextAction,

@@ -355,4 +355,33 @@ describe("SalesCoreDurableObject (workerd + DO SQLite)", () => {
       expect(summary.perUser.find(r => r.userId)?.wonCount).toBe(1);
     });
   });
+
+  describe("accountSummary (企業サマリ) over the real RPC boundary", () => {
+    // Multi-deal aggregation (D1's account-summary.test.ts covers that against the repository
+    // directly, unaffected by entity-resolution's confidence threshold for re-matching a customer
+    // name across captures). This just proves getOpportunity actually returns accountSummary, live,
+    // through the real RPC path -- not a hand-built DTO that happens to satisfy the type.
+    it("returns this deal's own numbers as the account's only OPEN deal, once confirmed", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: true };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      mockLlmOnce(EXTRACTION);
+      const captured = await core.capture(caller,
+        "今日ABCの山田さんと話して、100万はOK。金曜に社内承認が出る。通れば来週契約。月曜に電話する。");
+      // Confirm the CUSTOMER_AMBIGUOUS review as "new" so the account is a real, confirmed
+      // customer_account (not an UNRESOLVED placeholder) -- accountSummaryFor counts its OPEN deals.
+      const reviews = await core.listReviews(caller);
+      await core.resolveReview(caller, reviews[0]!.id, { optionId: "new" });
+
+      // stalledCount is not asserted here: this suite runs against the real wall clock while
+      // EXTRACTION's activity.occurred_at is a fixed date, so "stalled" depends on when the test
+      // happens to run. account-summary.test.ts covers stalledCount against a fixed clock instead.
+      const detail = await core.getOpportunity(caller, captured.opportunity!.id);
+      expect(detail.accountSummary.openCount).toBe(1);
+      expect(detail.accountSummary.expectedAmountTotal).toBe(1_000_000);
+      expect(detail.accountSummary.currency).toBe("JPY");
+      expect(detail.accountSummary.highRiskCount).toBe(0);
+    });
+  });
 });
