@@ -15,6 +15,7 @@ import {
   type AccountPatch, type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog,
   type CaptureOptions, type CaptureResult, type Commitment, type ConfigDto, type CoreContext,
   type CustomerAccount, type CustomerDetail, type CustomerPerson, type ManagerSummary,
+  type ManagerSummaryQuery,
   type NextAction, type NextActionFilter, type NextActionInput, type NextActionPatch,
   type OpportunityDetail, type OpportunityFilter, type OpportunityPatch, type OpportunitySummary,
   type LineItemInput, type PersonInput, type PersonPatch, type Product, type ProductInput,
@@ -315,8 +316,8 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
     return this.#service.dismissReview(this.#actor(caller), id);
   }
 
-  async getManagerSummary(caller: Caller): Promise<ManagerSummary> {
-    return this.#service.getManagerSummary(this.#actor(caller));
+  async getManagerSummary(caller: Caller, query?: ManagerSummaryQuery): Promise<ManagerSummary> {
+    return this.#service.getManagerSummary(this.#actor(caller), query ?? {});
   }
 
   async listUsers(caller: Caller): Promise<UserDto[]> {

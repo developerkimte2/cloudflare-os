@@ -5,7 +5,8 @@
  */
 import type {
   AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
-  CustomerDetail, LineItemInput, ManagerPerUserRow, ManagerSummary, NextActionFilter, NextActionInput,
+  CustomerDetail, LineItemInput, ManagerPerUserRow, ManagerSummary, ManagerSummaryQuery,
+  NextActionFilter, NextActionInput,
   NextActionPatch, NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch,
   OpportunitySummary, PersonInput, PersonPatch, ProductInput, ProductPatch, RegisterIdentityInput,
   ReviewDto, ReviewResolution, TodayAction, TodayView, UserDto,
@@ -17,6 +18,7 @@ import type {
   SourceDocument, User, UserRole,
 } from "../domain/types.js";
 import { lineTotals } from "../rules/money.js";
+import { periodLabel, resolvePeriod } from "../rules/period.js";
 import {
   addDays, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso,
 } from "../domain/util.js";
@@ -990,7 +992,7 @@ export class SalesService {
 
   // ---- manager / admin -------------------------------------------------------------------------------
 
-  getManagerSummary(actor: Actor): ManagerSummary {
+  getManagerSummary(actor: Actor, query: ManagerSummaryQuery = {}): ManagerSummary {
     const user = this.requireUser(actor);
     if (user.role === "SALES") throw new AuthorizationError("マネージャー以上の権限が必要です");
     const now = nowIso(this.ctx.clock);
@@ -1001,12 +1003,11 @@ export class SalesService {
     const openReviews = this.repo.listReviews("OPEN").length;
 
     const tz = this.config.defaultTimezone;
-    const monthStart = startOfLocalMonth(now, tz);
-    const monthFrom = localDate(monthStart, tz);                        // YYYY-MM-01
-    const monthTo = localDate(startOfLocalMonth(addDays(monthStart, 35), tz), tz);  // 翌月 01
+    const preset = typeof query.period === "string" ? query.period : query.period ? undefined : "THIS_MONTH";
+    const period = resolvePeriod(query.period, now, tz, this.config.fiscalYearStartMonth);
     const weekAgo = addDays(now, -7);
-    const aggregates = this.repo.managerKpiAggregates(monthFrom, monthTo, now);
-    const perUserStats = this.repo.managerPerUserStats(now, stalledBefore, weekAgo);
+    const aggregates = this.repo.managerKpiAggregates(period.from, period.to, now);
+    const perUserStats = this.repo.managerPerUserStats(now, stalledBefore, weekAgo, period.from, period.to);
     const users = this.repo.listUsers();
     const perUser: ManagerPerUserRow[] = users
       .map(u => {
@@ -1016,6 +1017,7 @@ export class SalesService {
           openOpportunities: s?.openOpportunities ?? 0, expectedAmountTotal: s?.expectedAmountTotal ?? 0,
           overdueActions: s?.overdueActions ?? 0, stalledOpportunities: s?.stalledOpportunities ?? 0,
           openReviews: s?.openReviews ?? 0, lastCaptureAt: s?.lastCaptureAt, capturesLast7Days: s?.capturesLast7Days ?? 0,
+          wonCount: s?.wonCount ?? 0, wonAmount: s?.wonAmount ?? 0,
         };
       })
       .sort((a, b) => Number(b.active) - Number(a.active));
@@ -1027,6 +1029,7 @@ export class SalesService {
       highRisk: highRisk.map(o => this.summarize(o)),
       contracting: open.filter(o => o.operationalState === "CONTRACTING").map(o => this.summarize(o)),
       openReviews,
+      period, periodLabel: periodLabel(period, preset, this.config.fiscalYearStartMonth),
       kpis: {
         openOpportunities: open.length, expectedAmountTotal: aggregates.expectedAmountTotal,
         currency: this.config.defaultCurrency, wonThisMonth: aggregates.wonThisMonth,

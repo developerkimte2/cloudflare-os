@@ -81,12 +81,12 @@ describe("getManagerSummary: KPIs and per-rep table", () => {
     expect(byName.get("太郎")).toEqual({
       userId: taro.id, displayName: "太郎", active: true,
       openOpportunities: 3, expectedAmountTotal: 1_000_000, overdueActions: 1, stalledOpportunities: 1,
-      openReviews: 0, lastCaptureAt: NOW, capturesLast7Days: 1,
+      openReviews: 0, lastCaptureAt: NOW, capturesLast7Days: 1, wonCount: 0, wonAmount: 0,
     });
     expect(byName.get("花子")).toEqual({
       userId: hanako.id, displayName: "花子", active: true,
       openOpportunities: 1, expectedAmountTotal: 500_000, overdueActions: 0, stalledOpportunities: 0,
-      openReviews: 1, lastCaptureAt: undefined, capturesLast7Days: 0,
+      openReviews: 1, lastCaptureAt: undefined, capturesLast7Days: 0, wonCount: 1, wonAmount: 300_000,
     });
 
     expect(() => svc.getManagerSummary({ userId: taro.id })).toThrow(AuthorizationError);

@@ -10,10 +10,10 @@ import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
-  ManagerSummary, NextAction,
+  ManagerSummary, ManagerSummaryQuery, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
   OpportunityFilter, OpportunityLineItem, OpportunityPatch, OpportunitySummary, PersonInput,
-  PersonPatch, Product, ProductInput, ProductPatch,
+  PersonPatch, Period, PeriodPreset, Product, ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
   TodayView, UserDto,
 } from "@gadgets/sales-core";
@@ -22,10 +22,10 @@ export type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
-  ManagerSummary, NextAction,
+  ManagerSummary, ManagerSummaryQuery, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
   OpportunityFilter, OpportunityLineItem, OpportunityPatch, OpportunitySummary, PersonInput,
-  PersonPatch, Product, ProductInput, ProductPatch,
+  PersonPatch, Period, PeriodPreset, Product, ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
   TodayView, UserDto,
 };
@@ -102,7 +102,7 @@ export interface SalesManagementApi {
   resolveReview(id: string, resolution: ReviewResolution): Promise<ReviewDto>;
   dismissReview(id: string): Promise<ReviewDto>;
 
-  getManagerSummary(): Promise<ManagerSummary>;
+  getManagerSummary(query?: ManagerSummaryQuery): Promise<ManagerSummary>;
   listUsers(): Promise<UserDto[]>;
   updateUser(userId: string, patch: Partial<Pick<UserDto, "displayName" | "role" | "managerUserId" | "timezone" | "active">>): Promise<UserDto>;
   getConfig(): Promise<ConfigDto>;

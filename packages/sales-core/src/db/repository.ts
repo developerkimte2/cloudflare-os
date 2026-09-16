@@ -298,22 +298,25 @@ export class Repository {
 
   /**
    * Per-rep table on the Team page: one GROUP BY per metric (never a JOIN across them, which would
-   * multiply rows) merged by user id in JS. `now`/`stalledBefore`/`weekAgo` are ISO instants.
+   * multiply rows) merged by user id in JS. `now`/`stalledBefore`/`weekAgo` are ISO instants;
+   * `closedFrom`/`closedTo` are the F1 reporting period (YYYY-MM-DD, [from, to)).
    */
-  managerPerUserStats(now: string, stalledBefore: string, weekAgo: string): Map<string, {
+  managerPerUserStats(now: string, stalledBefore: string, weekAgo: string, closedFrom: string, closedTo: string): Map<string, {
     openOpportunities: number; expectedAmountTotal: number; overdueActions: number;
     stalledOpportunities: number; openReviews: number; lastCaptureAt?: string; capturesLast7Days: number;
+    wonCount: number; wonAmount: number;
   }> {
     type Stats = {
       openOpportunities: number; expectedAmountTotal: number; overdueActions: number;
       stalledOpportunities: number; openReviews: number; lastCaptureAt?: string; capturesLast7Days: number;
+      wonCount: number; wonAmount: number;
     };
     const stats = new Map<string, Stats>();
     const ensure = (userId: string): Stats => {
       let s = stats.get(userId);
       if (!s) {
         s = { openOpportunities: 0, expectedAmountTotal: 0, overdueActions: 0, stalledOpportunities: 0,
-          openReviews: 0, capturesLast7Days: 0 };
+          openReviews: 0, capturesLast7Days: 0, wonCount: 0, wonAmount: 0 };
         stats.set(userId, s);
       }
       return s;
@@ -350,6 +353,13 @@ export class Repository {
       const s = ensure(row.submitted_by_user_id);
       s.lastCaptureAt = row.last_at ?? undefined;
       s.capturesLast7Days = row.recent;
+    }
+    for (const row of this.db.all<{ owner_user_id: string; n: number; amount: number }>(
+      "SELECT owner_user_id, COUNT(*) AS n, COALESCE(SUM(won_amount), 0) AS amount FROM opportunities " +
+      "WHERE lifecycle_state = 'WON' AND closed_at >= ? AND closed_at < ? GROUP BY owner_user_id", closedFrom, closedTo)) {
+      const s = ensure(row.owner_user_id);
+      s.wonCount = row.n;
+      s.wonAmount = row.amount;
     }
     return stats;
   }

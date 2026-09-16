@@ -2,10 +2,12 @@ import type { RpcStub } from "capnweb";
 import { ChatCircleDots } from "@phosphor-icons/react";
 import { useState } from "react";
 import type {
-  ManagerKpis, ManagerPerUserRow, ManagerSummary, OpportunitySummary, SalesManagementApi, UserDto,
+  ManagerKpis, ManagerPerUserRow, ManagerSummary, ManagerSummaryQuery, OpportunitySummary,
+  SalesManagementApi, UserDto,
 } from "../../src/management-types";
 import { useApiAction, useAsyncData } from "../api";
 import { OpportunityStatusBadge, RiskBadge } from "../components/Badges";
+import { PeriodPicker, type PeriodChoice } from "../components/PeriodPicker";
 import { daysSince, formatDate, formatDateTime, formatRelativeDay } from "../format";
 import { LIFECYCLE_LABEL, ROLE_LABEL } from "../labels";
 
@@ -21,7 +23,14 @@ export default function ManagerPage({
   onOpenOpportunity: (id: string) => void;
 }) {
   const runAction = useApiAction();
-  const { loading, error, data, reload } = useAsyncData<ManagerSummary>(() => api.getManagerSummary(), [api]);
+  const [periodChoice, setPeriodChoice] = useState<PeriodChoice>({ preset: "THIS_MONTH" });
+  const periodQuery: ManagerSummaryQuery = "preset" in periodChoice
+    ? { period: periodChoice.preset }
+    : { period: periodChoice.custom };
+  const { loading, error, data, reload } = useAsyncData<ManagerSummary>(
+    () => api.getManagerSummary(periodQuery),
+    [api, periodChoice],
+  );
   const { data: users, reload: reloadUsers } = useAsyncData<UserDto[]>(
     () => api.listUsers().catch(() => [] as UserDto[]),
     [api],
@@ -70,7 +79,11 @@ export default function ManagerPage({
         </button>
       </header>
 
-      <KpiTiles kpis={data.kpis} />
+      <div className="mt-3">
+        <PeriodPicker value={periodChoice} onChange={setPeriodChoice} />
+      </div>
+
+      <KpiTiles kpis={data.kpis} periodLabel={data.periodLabel} />
 
       <PerRepTable rows={data.perUser} timezone={timezone} />
 
@@ -120,12 +133,12 @@ export default function ManagerPage({
   );
 }
 
-function KpiTiles({ kpis }: { kpis: ManagerKpis }) {
+function KpiTiles({ kpis, periodLabel }: { kpis: ManagerKpis; periodLabel: string }) {
   const tiles: Array<{ label: string; value: string }> = [
     { label: "進行中", value: String(kpis.openOpportunities) },
     { label: "見込金額", value: `${kpis.expectedAmountTotal.toLocaleString("ja-JP")} ${kpis.currency}` },
-    { label: "今月受注", value: `${kpis.wonThisMonth} 件 / ${kpis.wonAmountThisMonth.toLocaleString("ja-JP")}円` },
-    { label: "今月失注", value: String(kpis.lostThisMonth) },
+    { label: "受注", value: `${kpis.wonThisMonth} 件 / ${kpis.wonAmountThisMonth.toLocaleString("ja-JP")}円` },
+    { label: "失注", value: String(kpis.lostThisMonth) },
     { label: "停滞", value: String(kpis.stalled) },
     { label: "高リスク", value: String(kpis.highRisk) },
     { label: "期限超過", value: String(kpis.overdueActions) },
@@ -133,13 +146,16 @@ function KpiTiles({ kpis }: { kpis: ManagerKpis }) {
     { label: "確認待ち", value: String(kpis.openReviews) },
   ];
   return (
-    <div className="mt-5 flex flex-wrap gap-2">
-      {tiles.map((tile) => (
-        <div key={tile.label} className="rounded-lg border border-kumo-line bg-kumo-control px-3.5 py-2.5">
-          <p className="text-xs text-kumo-subtle">{tile.label}</p>
-          <p className="mt-0.5 text-lg font-semibold text-kumo-default">{tile.value}</p>
-        </div>
-      ))}
+    <div className="mt-3">
+      <p className="text-xs text-kumo-subtle">期間: {periodLabel}</p>
+      <div className="mt-1.5 flex flex-wrap gap-2">
+        {tiles.map((tile) => (
+          <div key={tile.label} className="rounded-lg border border-kumo-line bg-kumo-control px-3.5 py-2.5">
+            <p className="text-xs text-kumo-subtle">{tile.label}</p>
+            <p className="mt-0.5 text-lg font-semibold text-kumo-default">{tile.value}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -160,6 +176,7 @@ function PerRepTable({ rows, timezone }: { rows: ManagerPerUserRow[]; timezone: 
                 <th className="px-3 py-2 font-medium">担当</th>
                 <th className="px-3 py-2 font-medium">進行中</th>
                 <th className="px-3 py-2 font-medium">見込額</th>
+                <th className="px-3 py-2 font-medium">受注 (件/額)</th>
                 <th className="px-3 py-2 font-medium">期限超過</th>
                 <th className="px-3 py-2 font-medium">停滞</th>
                 <th className="px-3 py-2 font-medium">確認待ち</th>
@@ -173,6 +190,9 @@ function PerRepTable({ rows, timezone }: { rows: ManagerPerUserRow[]; timezone: 
                   <td className="px-3 py-2 font-medium text-kumo-default">{row.displayName}</td>
                   <td className="px-3 py-2 text-kumo-default">{row.openOpportunities}</td>
                   <td className="px-3 py-2 text-kumo-default">{row.expectedAmountTotal.toLocaleString("ja-JP")}</td>
+                  <td className="px-3 py-2 text-kumo-default">
+                    {row.wonCount} / {row.wonAmount.toLocaleString("ja-JP")}
+                  </td>
                   <td className={`px-3 py-2 ${row.overdueActions > 0 ? "font-medium text-kumo-danger" : "text-kumo-default"}`}>
                     {row.overdueActions}
                   </td>

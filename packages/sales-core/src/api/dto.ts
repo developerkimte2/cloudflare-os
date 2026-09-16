@@ -9,6 +9,7 @@ import type {
   TaxCategory, User, UserRole,
 } from "../domain/types.js";
 import type { LineTotals } from "../rules/money.js";
+import type { Period, PeriodPreset } from "../rules/period.js";
 import type { SalesConfig } from "../rules/config.js";
 
 /** Who is calling. Resolved by the adapter from its own identity mechanism. */
@@ -337,7 +338,7 @@ export interface ManagerKpis {
   openOpportunities: number;
   expectedAmountTotal: number;
   currency: string;
-  /** Deals whose closedAt falls in the current local month (a person's close date, not updatedAt). */
+  /** Deals whose closedAt falls in the requested period (F1; a person's close date, not updatedAt). */
   wonThisMonth: number;
   wonAmountThisMonth: number;
   lostThisMonth: number;
@@ -361,6 +362,9 @@ export interface ManagerPerUserRow {
   openReviews: number;
   lastCaptureAt?: string;
   capturesLast7Days: number;
+  /** WON deals whose closedAt falls in the requested period (F1). */
+  wonCount: number;
+  wonAmount: number;
 }
 
 export interface ManagerSummary {
@@ -373,7 +377,12 @@ export interface ManagerSummary {
   kpis: ManagerKpis;
   /** Active users first, in the order `listUsers()` returns them; inactive users last. */
   perUser: ManagerPerUserRow[];
+  /** The period wonThisMonth/lostThisMonth/perUser's won counts were computed over (F1). */
+  period: Period;
+  periodLabel: string;
 }
+
+export interface ManagerSummaryQuery { period?: PeriodPreset | Period }
 
 export type ConfigDto = SalesConfig;
 

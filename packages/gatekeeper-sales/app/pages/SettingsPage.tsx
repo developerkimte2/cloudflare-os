@@ -16,12 +16,20 @@ const CONFIDENCE_FIELDS: { key: keyof ConfigDto; label: string; hint: string }[]
   { key: "opportunityAutoConfidence", label: "案件の自動照合", hint: "この確信度以上で既存案件に自動的に紐付けます。" },
 ];
 
-const NUMBER_FIELDS: { key: keyof ConfigDto; label: string; unit: string; min: number; step: number }[] = [
+const NUMBER_FIELDS: { key: keyof ConfigDto; label: string; unit: string; min: number; max?: number; step: number }[] = [
   { key: "stalledDays", label: "停滞とみなす日数", unit: "日", min: 1, step: 1 },
   { key: "preMeetingMinutes", label: "商談前リマインド", unit: "分前", min: 0, step: 5 },
   { key: "postMeetingCaptureMinutes", label: "商談後の記録リマインド", unit: "分後", min: 0, step: 5 },
   { key: "managerEscalationHours", label: "上長へのエスカレーション", unit: "時間", min: 1, step: 1 },
+  { key: "fiscalYearStartMonth", label: "会計年度の開始月", unit: "月", min: 1, max: 12, step: 1 },
 ];
+
+const TAX_ROUNDING_LABEL: Record<ConfigDto["taxRounding"], string> = {
+  FLOOR: "切り捨て",
+  ROUND: "四捨五入",
+  CEIL: "切り上げ",
+};
+const TAX_ROUNDINGS: ConfigDto["taxRounding"][] = ["FLOOR", "ROUND", "CEIL"];
 
 export default function SettingsPage({
   api,
@@ -196,6 +204,7 @@ export default function SettingsPage({
                 <input
                   type="number"
                   min={field.min}
+                  max={field.max}
                   step={field.step}
                   value={form[field.key] as number}
                   onChange={(event) =>
@@ -239,6 +248,68 @@ export default function SettingsPage({
               }
               className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
             />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="消費税">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Field label="標準税率">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={Math.round(form.taxRates.STANDARD * 1000) / 10}
+                onChange={(event) =>
+                  setForm((current) =>
+                    current
+                      ? { ...current, taxRates: { ...current.taxRates, STANDARD: Number(event.currentTarget.value) / 100 } }
+                      : current,
+                  )
+                }
+                className="h-8 w-20 rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+              />
+              <span className="text-xs text-kumo-subtle">%</span>
+            </div>
+          </Field>
+          <Field label="軽減税率">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={Math.round(form.taxRates.REDUCED * 1000) / 10}
+                onChange={(event) =>
+                  setForm((current) =>
+                    current
+                      ? { ...current, taxRates: { ...current.taxRates, REDUCED: Number(event.currentTarget.value) / 100 } }
+                      : current,
+                  )
+                }
+                className="h-8 w-20 rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+              />
+              <span className="text-xs text-kumo-subtle">%</span>
+            </div>
+          </Field>
+          <Field label="端数処理">
+            <select
+              value={form.taxRounding}
+              onChange={(event) =>
+                setForm((current) =>
+                  current ? { ...current, taxRounding: event.currentTarget.value as ConfigDto["taxRounding"] } : current,
+                )
+              }
+              className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+            >
+              {TAX_ROUNDINGS.map((r) => (
+                <option key={r} value={r}>
+                  {TAX_ROUNDING_LABEL[r]}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
       </Section>

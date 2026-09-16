@@ -33,6 +33,8 @@ export interface SalesConfig {
   /** Tax rate per 消費税区分 (D2). A rate change here never rewrites existing line items. */
   taxRates: Record<TaxCategory, number>;
   taxRounding: "FLOOR" | "ROUND" | "CEIL";
+  /** 1-12: the calendar month a fiscal year starts in (F1). Drives THIS_QUARTER/THIS_FY/LAST_FY. */
+  fiscalYearStartMonth: number;
 }
 
 export const DEFAULT_CONFIG: SalesConfig = {
@@ -53,6 +55,7 @@ export const DEFAULT_CONFIG: SalesConfig = {
   phaseLabels: [],
   taxRates: { STANDARD: 0.1, REDUCED: 0.08, EXEMPT: 0 },
   taxRounding: "FLOOR",
+  fiscalYearStartMonth: 4,
 };
 
 export const CONFIG_SETTING_KEY = "config";

@@ -1184,4 +1184,22 @@ describe("closing a deal (C1)", () => {
     expect(kpis.wonThisMonth).toBe(1);
     expect(kpis.wonAmountThisMonth).toBe(100);
   });
+
+  it("F1: a LAST_MONTH query counts last month's won deals instead of this month's", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const manager = makeUser(svc.repo, "MANAGER");
+    const account = makeAccount(svc.repo);
+    const thisMonth = makeOpportunity(svc.repo, account.id, manager.id, { expectedAmount: 100 });
+    const lastMonth = makeOpportunity(svc.repo, account.id, manager.id, { expectedAmount: 900 });
+    svc.updateOpportunity({ userId: manager.id }, thisMonth.id, { lifecycleState: "WON", closedAt: "2026-09-02", version: 1 });
+    svc.updateOpportunity({ userId: manager.id }, lastMonth.id, { lifecycleState: "WON", closedAt: "2026-08-30", version: 1 });
+    const summary = svc.getManagerSummary({ userId: manager.id }, { period: "LAST_MONTH" });
+    expect(summary.kpis.wonThisMonth).toBe(1);
+    expect(summary.kpis.wonAmountThisMonth).toBe(900);
+    expect(summary.period).toEqual({ from: "2026-08-01", to: "2026-09-01" });
+    expect(summary.periodLabel).toBe("2026年8月");
+    const row = summary.perUser.find(r => r.userId === manager.id)!;
+    expect(row.wonCount).toBe(1);
+    expect(row.wonAmount).toBe(900);
+  });
 });

@@ -22,7 +22,8 @@ import type {
 } from "@gadgets/workshop-shared/gatekeeper";
 import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
-  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, LineItemInput, ManagerSummary, NextAction,
+  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, LineItemInput, ManagerSummary,
+  ManagerSummaryQuery, NextAction,
   NextActionFilter,
   NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
   OpportunitySummary, PersonInput, PersonPatch, Product, ProductInput, ProductPatch,
@@ -501,7 +502,7 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   listReviews(): Promise<ReviewDto[]> { return this.core.listReviews(this.caller); }
   resolveReview(id: string, resolution: ReviewResolution): Promise<ReviewDto> { return this.core.resolveReview(this.caller, id, resolution); }
   dismissReview(id: string): Promise<ReviewDto> { return this.core.dismissReview(this.caller, id); }
-  getManagerSummary(): Promise<ManagerSummary> { return this.core.getManagerSummary(this.caller); }
+  getManagerSummary(query?: ManagerSummaryQuery): Promise<ManagerSummary> { return this.core.getManagerSummary(this.caller, query); }
   listUsers(): Promise<UserDto[]> { return this.core.listUsers(this.caller); }
   updateUser(userId: string, patch: Partial<Pick<UserDto, "displayName" | "role" | "managerUserId" | "timezone" | "active">>): Promise<UserDto> { return this.core.updateUser(this.caller, userId, patch); }
   getConfig(): Promise<ConfigDto> { return this.core.getConfig(this.caller); }
