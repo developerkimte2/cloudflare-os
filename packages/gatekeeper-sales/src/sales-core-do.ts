@@ -242,6 +242,10 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
     return this.#service.updateOpportunity(this.#actor(caller), id, patch);
   }
 
+  async mergeOpportunities(caller: Caller, sourceId: string, targetId: string): Promise<OpportunitySummary> {
+    return this.#service.mergeOpportunities(this.#actor(caller), sourceId, targetId);
+  }
+
   async updateAccount(caller: Caller, accountId: string, patch: AccountPatch): Promise<CustomerAccount> {
     return this.#service.updateAccount(this.#actor(caller), accountId, patch);
   }

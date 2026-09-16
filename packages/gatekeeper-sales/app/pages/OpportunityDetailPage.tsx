@@ -12,6 +12,7 @@ import type {
   NextActionSuggestion,
   OpportunityDetail,
   OpportunityPatch,
+  OpportunitySummary,
   PersonInput,
   PersonPatch,
   SalesManagementApi,
@@ -98,6 +99,11 @@ export default function OpportunityDetailPage({
   const savePatch = async (patch: OpportunityPatch) => {
     await runAction(() => api.updateOpportunity(opportunityId, patch), "案件の更新に失敗しました");
     reload();
+  };
+
+  const mergeInto = async (targetId: string) => {
+    const merged = await runAction(() => api.mergeOpportunities(opportunityId, targetId), "案件の統合に失敗しました");
+    if (merged) onOpenOpportunity(targetId);
   };
 
   const recompute = async () => {
@@ -214,10 +220,14 @@ export default function OpportunityDetailPage({
       </div>
 
       <Section title="概要">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3">
           <DealSummaryCard opportunity={data} timezone={timezone} />
           <AccountSummaryCard summary={data.accountSummary} onOpenCustomer={() => onOpenCustomer(data.accountId)} />
         </div>
+      </Section>
+
+      <Section title="対象の確定（表記ゆれ・誤判定の修正）">
+        <MergeOpportunitySection api={api} opportunity={data} onMerge={mergeInto} />
       </Section>
 
       <Section title="明細">
@@ -655,13 +665,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ---------------------------------------------------------------------------
 
 /** One label/value row. No wrapping: the value truncates with an ellipsis instead of breaking to a second line. */
+/** One label/value row, full width (card is now full-bleed so this rarely needs to wrap at all). */
 function SummaryRow({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
       <span className="shrink-0 text-xs text-kumo-inactive">{label}</span>
       <span
-        className={`truncate text-right text-sm font-medium ${tone === "danger" ? "text-kumo-danger" : "text-kumo-default"}`}
-        title={value}
+        className={`min-w-0 whitespace-normal break-words text-right text-sm font-medium ${
+          tone === "danger" ? "text-kumo-danger" : "text-kumo-default"
+        }`}
       >
         {value}
       </span>
@@ -724,6 +736,121 @@ function AccountSummaryCard({
         <SummaryRow label="進行中案件" value={`${summary.openCount} 件`} />
         <SummaryRow label="見込金額合計" value={`${summary.expectedAmountTotal.toLocaleString("ja-JP")} ${summary.currency}`} />
         {warnings.length > 0 && <SummaryRow label="警告" value={`⚠ ${warnings.join("・")}`} tone="danger" />}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * AI が判定を誤った、または表記ゆれ（「山田商事」/「株式会社山田商事」等）で顧客が確定できず、この案件が
+ * 実は既存の別案件の続きだった、というケースの手直し。自由文ではなく企業→案件の2段階プルダウンで統合先を
+ * 選ばせる（表記ゆれの再発を避けるため）。この案件は「統合済み」として残り、削除はされない。
+ */
+function MergeOpportunitySection({
+  api,
+  opportunity,
+  onMerge,
+}: {
+  api: RpcStub<SalesManagementApi>;
+  opportunity: OpportunityDetail;
+  onMerge: (targetId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [accountId, setAccountId] = useState("");
+  const [targetId, setTargetId] = useState("");
+  const { loading, data: candidates } = useAsyncData<OpportunitySummary[]>(
+    () => (open ? api.listOpportunities({ limit: 500 }) : Promise.resolve([])),
+    [api, open],
+  );
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="press rounded-lg border border-kumo-line px-3 py-1.5 text-sm font-medium text-kumo-default hover:bg-kumo-tint"
+      >
+        別の案件と統合する
+      </button>
+    );
+  }
+
+  if (loading || !candidates) {
+    return <p className="text-sm text-kumo-subtle">読み込み中…</p>;
+  }
+
+  // Company list: every distinct account among the deals this viewer can see (this deal's own
+  // account first, so the common case -- another deal of the SAME company -- needs one less click).
+  const accounts = [...new Map(candidates.map((o) => [o.accountId, o.accountName])).entries()]
+    .sort(([idA, nameA], [idB, nameB]) =>
+      idA === opportunity.accountId ? -1 : idB === opportunity.accountId ? 1 : nameA.localeCompare(nameB, "ja"));
+  const targets = candidates.filter((o) => o.accountId === accountId && o.id !== opportunity.id);
+
+  return (
+    <div className="rounded-lg border border-kumo-line bg-kumo-base p-3">
+      <p className="text-xs text-kumo-subtle">
+        この案件を、正しい企業・案件に統合します。統合すると活動や次アクションは統合先に移り、この案件は「統合済み」として残ります（削除されません）。
+      </p>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-kumo-inactive">企業</span>
+          <select
+            value={accountId}
+            onChange={(event) => {
+              setAccountId(event.currentTarget.value);
+              setTargetId("");
+            }}
+            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+          >
+            <option value="">選んでください</option>
+            {accounts.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-kumo-inactive">統合先の案件</span>
+          <select
+            value={targetId}
+            onChange={(event) => setTargetId(event.currentTarget.value)}
+            disabled={!accountId}
+            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default disabled:opacity-50"
+          >
+            <option value="">選んでください</option>
+            {targets.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.title}
+              </option>
+            ))}
+          </select>
+          {accountId && targets.length === 0 && (
+            <p className="mt-1 text-[11px] text-kumo-subtle">この企業には統合できる他の案件がありません。</p>
+          )}
+        </label>
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setAccountId("");
+            setTargetId("");
+          }}
+          className="press rounded-lg border border-kumo-line px-3 py-1.5 text-sm text-kumo-default hover:bg-kumo-tint"
+        >
+          キャンセル
+        </button>
+        {targetId && (
+          <ConfirmInline
+            label="統合する"
+            confirmText={`「${opportunity.title}」を「${targets.find((o) => o.id === targetId)?.title}」に統合しますか？取り消せません。`}
+            confirmLabel="統合して移動"
+            tone="danger"
+            onConfirm={() => onMerge(targetId)}
+          />
+        )}
       </div>
     </div>
   );

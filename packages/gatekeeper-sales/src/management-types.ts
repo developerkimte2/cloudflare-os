@@ -74,6 +74,11 @@ export interface SalesManagementApi {
   listOpportunities(filter?: OpportunityFilter): Promise<OpportunitySummary[]>;
   getOpportunity(id: string): Promise<OpportunityDetail>;
   updateOpportunity(id: string, patch: OpportunityPatch): Promise<OpportunitySummary>;
+  /**
+   * Manual fix for AI mis-matches / spelling variants: folds `sourceId`'s activities, commitments,
+   * next actions etc. into `targetId` and closes+relabels the source (kept, never deleted).
+   */
+  mergeOpportunities(sourceId: string, targetId: string): Promise<OpportunitySummary>;
   recomputeContext(id: string): Promise<AIContextSnapshot>;
 
   /** Company address / phone / URL. Shared by every opportunity of that customer. */

@@ -384,4 +384,38 @@ describe("SalesCoreDurableObject (workerd + DO SQLite)", () => {
       expect(detail.accountSummary.highRiskCount).toBe(0);
     });
   });
+
+  describe("mergeOpportunities (manual fix for AI mis-matches / spelling variants) over the real RPC boundary", () => {
+    it("folds a wrongly-separated deal into the correct one; the source is closed, not deleted", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: true };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      mockLlmOnce(EXTRACTION);
+      const source = await core.capture(caller,
+        "今日ABCの山田さんと話して、100万はOK。金曜に社内承認が出る。通れば来週契約。月曜に電話する。");
+      const sourceReviews = await core.listReviews(caller);
+      await core.resolveReview(caller, sourceReviews[0]!.id, { optionId: "new" });
+
+      mockLlmOnce({
+        ...EXTRACTION,
+        entities: { account_candidates: [{ name: "XYZ商事", confidence: 0.95 }], person_candidates: [] },
+        opportunity: { match: "NEW", title: "XYZ商事 別件", confidence: 0.9 },
+      });
+      const target = await core.capture(caller, "XYZ商事の鈴木さんと商談。来月また連絡。");
+      const targetReviews = (await core.listReviews(caller)).filter(r => r.id !== sourceReviews[0]!.id);
+      await core.resolveReview(caller, targetReviews[0]!.id, { optionId: "new" });
+
+      const merged = await core.mergeOpportunities(caller, source.opportunity!.id, target.opportunity!.id);
+      expect(merged.id).toBe(target.opportunity!.id);
+
+      const closedSource = await core.getOpportunity(caller, source.opportunity!.id);
+      expect(closedSource.lifecycleState).toBe("CLOSED");
+      expect(closedSource.title).toContain("統合済み");
+
+      const targetDetail = await core.getOpportunity(caller, target.opportunity!.id);
+      expect(targetDetail.activities.length).toBeGreaterThanOrEqual(1);
+      expect(targetDetail.audit.some(a => a.action === "OPPORTUNITY_MERGED")).toBe(true);
+    });
+  });
 });

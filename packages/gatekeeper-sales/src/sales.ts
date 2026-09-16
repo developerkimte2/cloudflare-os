@@ -482,6 +482,7 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   listOpportunities(filter?: OpportunityFilter): Promise<OpportunitySummary[]> { return this.core.listOpportunities(this.caller, filter); }
   getOpportunity(id: string): Promise<OpportunityDetail> { return this.core.getOpportunity(this.caller, id); }
   updateOpportunity(id: string, patch: OpportunityPatch): Promise<OpportunitySummary> { return this.core.updateOpportunity(this.caller, id, patch); }
+  mergeOpportunities(sourceId: string, targetId: string): Promise<OpportunitySummary> { return this.core.mergeOpportunities(this.caller, sourceId, targetId); }
   recomputeContext(id: string): Promise<AIContextSnapshot> { return this.core.recomputeContext(this.caller, id); }
   updateAccount(accountId: string, patch: AccountPatch): Promise<CustomerAccount> { return this.core.updateAccount(this.caller, accountId, patch); }
   createPerson(accountId: string, input: PersonInput): Promise<CustomerPerson> { return this.core.createPerson(this.caller, accountId, input); }

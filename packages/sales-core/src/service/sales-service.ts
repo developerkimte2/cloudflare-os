@@ -505,6 +505,53 @@ export class SalesService {
   }
 
   /**
+   * Manual fix for AI mis-matches and spelling variants (「山田商事」 vs 「株式会社山田商事」等):
+   * a person picks the *correct* existing deal (company -> deal, two steps in the UI) and folds
+   * `sourceId` into it. Unlike resolveOpportunity's auto-merge (a fresh, still-empty duplicate the
+   * AI itself created during capture), `source` here may already carry real history, so it is kept
+   * -- closed and relabelled, never deleted -- rather than dropped.
+   */
+  mergeOpportunities(actor: Actor, sourceId: string, targetId: string): OpportunitySummary {
+    const user = this.requireUser(actor);
+    if (sourceId === targetId) throw new TypeError("同じ案件は統合できません");
+    const source = this.repo.getOpportunity(sourceId);
+    const target = this.repo.getOpportunity(targetId);
+    if (!source || !this.canSee(user, source)) throw new NotFoundError("案件");
+    if (!target || !this.canSee(user, target)) throw new NotFoundError("統合先の案件");
+    const now = nowIso(this.ctx.clock);
+    return this.repo.transaction(() => {
+      this.repo.moveOpportunityContents(sourceId, targetId);
+      const mergedContacts = [...new Set([...(target.contactPersonIds ?? []), ...(source.contactPersonIds ?? [])])]
+        .filter(id => this.repo.getPerson(id)?.accountId === target.accountId);
+      const merged: Opportunity = {
+        ...target,
+        expectedAmount: target.expectedAmount ?? source.expectedAmount,
+        contactPersonIds: mergedContacts,
+        lastMeaningfulActivityAt: [source.lastMeaningfulActivityAt, target.lastMeaningfulActivityAt]
+          .filter(isDefined).sort().at(-1),
+        updatedAt: now,
+      };
+      if (!this.repo.updateOpportunity(merged, target.version)) {
+        throw new Error("統合先の案件が他のユーザーによって更新されています。再読込してください");
+      }
+      const closedSource: Opportunity = {
+        ...source, lifecycleState: "CLOSED",
+        title: `${source.title} (統合済み → ${target.title})`,
+        updatedAt: now,
+      };
+      if (!this.repo.updateOpportunity(closedSource, source.version)) {
+        throw new Error("統合元の案件が他のユーザーによって更新されています。再読込してください");
+      }
+      this.refreshNextActionPointer(targetId);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "OPPORTUNITY_MERGED",
+        entityType: "opportunity", entityId: targetId,
+        before: { sourceId, sourceTitle: source.title, sourceAccountId: source.accountId },
+        after: diffable(merged) });
+      return this.summarize(this.repo.getOpportunity(targetId)!);
+    });
+  }
+
+  /**
    * Replaces a deal's 明細 wholesale and re-derives expectedAmount from the tax-exclusive total.
    * With zero rows the deal goes back to a hand-entered expectedAmount (kept as-is).
    */
