@@ -5,7 +5,8 @@
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, Commitment, CustomerAccount, CustomerPerson,
   JsonValue, LifecycleState, LostReason, NextAction, NextActionStatus, NextActionType, Opportunity,
-  Priority, ReviewItem, SourceDocument, SourceType, User, UserRole,
+  Priority, Product, ProductCategory, ReviewItem, SourceDocument, SourceType, TaxCategory, User,
+  UserRole,
 } from "../domain/types.js";
 import type { SalesConfig } from "../rules/config.js";
 
@@ -216,6 +217,32 @@ export interface PersonPatch {
   title?: string | null;
   email?: string | null;
   phone?: string | null;
+}
+
+export interface ProductInput {
+  code?: string;
+  name: string;
+  category?: ProductCategory;
+  unitPrice?: number;
+  cost?: number;
+  taxCategory?: TaxCategory;
+  unitLabel?: string;
+  description?: string;
+  active?: boolean;
+  sortOrder?: number;
+}
+/** null or "" clears a text field; numbers: null clears. */
+export interface ProductPatch {
+  code?: string | null;
+  name?: string;
+  category?: ProductCategory;
+  unitPrice?: number | null;
+  cost?: number | null;
+  taxCategory?: TaxCategory;
+  unitLabel?: string | null;
+  description?: string | null;
+  active?: boolean;
+  sortOrder?: number;
 }
 
 export interface NextActionFilter {

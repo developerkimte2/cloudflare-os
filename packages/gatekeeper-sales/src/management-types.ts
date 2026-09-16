@@ -11,7 +11,8 @@ import type {
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerKpis, ManagerPerUserRow,
   ManagerSummary, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
+  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch, Product,
+  ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
   TodayView, UserDto,
 } from "@gadgets/sales-core";
@@ -21,7 +22,8 @@ export type {
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerKpis, ManagerPerUserRow,
   ManagerSummary, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch,
+  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch, Product,
+  ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
   TodayView, UserDto,
 };
@@ -77,6 +79,10 @@ export interface SalesManagementApi {
   /** Adds a customer-side contact (担当者) with their title, email and phone. */
   createPerson(accountId: string, input: PersonInput): Promise<CustomerPerson>;
   updatePerson(personId: string, patch: PersonPatch): Promise<CustomerPerson>;
+  /** Product master (商材). Everyone can list; MANAGER/ADMIN edit. */
+  listProducts(options?: { includeInactive?: boolean }): Promise<Product[]>;
+  createProduct(input: ProductInput): Promise<Product>;
+  updateProduct(id: string, patch: ProductPatch): Promise<Product>;
   /** Company info, contacts, and every opportunity of this customer the caller can see. */
   getCustomer(accountId: string): Promise<CustomerDetail>;
 

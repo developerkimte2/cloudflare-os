@@ -7,13 +7,14 @@ import type {
   AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
   CustomerDetail, ManagerPerUserRow, ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch,
   NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary,
-  PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution, TodayAction, TodayView,
-  UserDto,
+  PersonInput, PersonPatch, ProductInput, ProductPatch, RegisterIdentityInput, ReviewDto,
+  ReviewResolution, TodayAction, TodayView, UserDto,
 } from "../api/dto.js";
 import { toUserDto } from "../api/dto.js";
 import type {
   AIDecision, Commitment, CustomerAccount, CustomerPerson, JsonValue, LifecycleState, LostReason,
-  NextAction, NextActionType, Opportunity, Priority, ReviewItem, SourceDocument, User, UserRole,
+  NextAction, NextActionType, Opportunity, Priority, Product, ReviewItem, SourceDocument, User,
+  UserRole,
 } from "../domain/types.js";
 import {
   addDays, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso,
@@ -550,6 +551,71 @@ export class SalesService {
         entityType: "customer_person", entityId: personId, before: person, after: next });
     });
     return next;
+  }
+
+  // ---- products -------------------------------------------------------------------------------
+
+  listProducts(actor: Actor, options: { includeInactive?: boolean } = {}): Product[] {
+    this.requireUser(actor);
+    return this.repo.listProducts(options.includeInactive ?? false);
+  }
+
+  createProduct(actor: Actor, input: ProductInput): Product {
+    const user = this.requireProductEditor(actor);
+    const name = input.name.trim();
+    if (!name) throw new TypeError("品目名を入力してください");
+    const code = cleanText(input.code);
+    if (code && this.repo.findProductByCode(code)) throw new TypeError("品目コードが重複しています");
+    const now = nowIso(this.ctx.clock);
+    const product: Product = {
+      id: newId(), code, name, category: input.category ?? "SERVICE",
+      unitPrice: nonNegative(input.unitPrice, "単価"), cost: nonNegative(input.cost, "原価"),
+      taxCategory: input.taxCategory ?? "STANDARD", unitLabel: cleanText(input.unitLabel),
+      description: cleanText(input.description), active: input.active ?? true,
+      sortOrder: input.sortOrder ?? 0, createdAt: now, updatedAt: now,
+    };
+    this.repo.transaction(() => {
+      this.repo.insertProduct(product);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "PRODUCT_CREATED",
+        entityType: "product", entityId: product.id, after: product });
+    });
+    return product;
+  }
+
+  updateProduct(actor: Actor, id: string, patch: ProductPatch): Product {
+    const user = this.requireProductEditor(actor);
+    const current = this.repo.getProduct(id);
+    if (!current) throw new NotFoundError("品目");
+    const next: Product = { ...current, updatedAt: nowIso(this.ctx.clock) };
+    if (patch.name !== undefined) next.name = patch.name.trim() || current.name;
+    if (patch.code !== undefined) {
+      next.code = cleanText(patch.code);
+      if (next.code) {
+        const dup = this.repo.findProductByCode(next.code);
+        if (dup && dup.id !== id) throw new TypeError("品目コードが重複しています");
+      }
+    }
+    if (patch.category !== undefined) next.category = patch.category;
+    if (patch.unitPrice !== undefined) next.unitPrice = patch.unitPrice === null ? undefined : nonNegative(patch.unitPrice, "単価");
+    if (patch.cost !== undefined) next.cost = patch.cost === null ? undefined : nonNegative(patch.cost, "原価");
+    if (patch.taxCategory !== undefined) next.taxCategory = patch.taxCategory;
+    if (patch.unitLabel !== undefined) next.unitLabel = cleanText(patch.unitLabel);
+    if (patch.description !== undefined) next.description = cleanText(patch.description);
+    if (patch.active !== undefined) next.active = patch.active;
+    if (patch.sortOrder !== undefined) next.sortOrder = patch.sortOrder;
+    this.repo.transaction(() => {
+      this.repo.updateProduct(next);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "PRODUCT_UPDATED",
+        entityType: "product", entityId: id, before: current, after: next });
+    });
+    return next;
+  }
+
+  /** Product master is shared by everyone, so only MANAGER/ADMIN may change it. */
+  private requireProductEditor(actor: Actor): User {
+    const user = this.requireUser(actor);
+    if (user.role === "SALES") throw new AuthorizationError("商材の編集はマネージャー以上の権限が必要です");
+    return user;
   }
 
   getCustomer(actor: Actor, accountId: string): CustomerDetail {
@@ -1232,6 +1298,12 @@ function stripUndefined<T extends object>(obj: T): Partial<T> {
 /** Trimmed text, or undefined for null / blank (so the column is cleared). */
 function cleanText(value: string | null | undefined): string | undefined {
   return value?.trim() || undefined;
+}
+
+function nonNegative(value: number | undefined, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value < 0) throw new TypeError(`${label}は 0 以上の数値で入力してください`);
+  return value;
 }
 
 function cleanEmail(value: string | null | undefined): string | undefined {

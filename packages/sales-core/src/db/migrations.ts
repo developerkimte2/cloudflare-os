@@ -345,6 +345,27 @@ ALTER TABLE opportunities ADD COLUMN competitor TEXT;
 CREATE INDEX idx_opportunities_closed_at ON opportunities(closed_at);
 `,
   },
+  {
+    id: "0008_products",
+    sql: `
+CREATE TABLE products (
+  id TEXT PRIMARY KEY,
+  code TEXT,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'SERVICE' CHECK (category IN ('GOODS','SERVICE','MAINTENANCE','SUBSCRIPTION','OTHER')),
+  unit_price REAL,
+  cost REAL,
+  tax_category TEXT NOT NULL DEFAULT 'STANDARD' CHECK (tax_category IN ('STANDARD','REDUCED','EXEMPT')),
+  unit_label TEXT,
+  description TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_products_active ON products(active, sort_order);
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

@@ -1,7 +1,7 @@
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, CalendarEventMirror, Commitment,
   CustomerAccount, CustomerPerson, ExternalIdentity, NextAction, NotificationLog, Opportunity,
-  ReviewItem, SourceApplication, SourceDocument, User,
+  Product, ReviewItem, SourceApplication, SourceDocument, User,
 } from "../domain/types.js";
 import { Table, col } from "./mapper.js";
 
@@ -30,6 +30,13 @@ export const customerPersons = new Table<CustomerPerson>("customer_persons", "id
   col("title", "title"), col("external_provider", "externalProvider"),
   col("external_person_id", "externalPersonId"), col("resolution_status", "resolutionStatus"),
   col("created_at", "createdAt"), col("updated_at", "updatedAt"),
+]);
+
+export const products = new Table<Product>("products", "id", [
+  col("id", "id"), col("code", "code"), col("name", "name"), col("category", "category"),
+  col("unit_price", "unitPrice"), col("cost", "cost"), col("tax_category", "taxCategory"),
+  col("unit_label", "unitLabel"), col("description", "description"), col("active", "active", "bool"),
+  col("sort_order", "sortOrder"), col("created_at", "createdAt"), col("updated_at", "updatedAt"),
 ]);
 
 export const opportunities = new Table<Opportunity>("opportunities", "id", [

@@ -71,6 +71,30 @@ export interface CustomerPerson {
   updatedAt: string;
 }
 
+export type ProductCategory = "GOODS" | "SERVICE" | "MAINTENANCE" | "SUBSCRIPTION" | "OTHER";
+export const PRODUCT_CATEGORIES: ProductCategory[] = ["GOODS", "SERVICE", "MAINTENANCE", "SUBSCRIPTION", "OTHER"];
+/** 消費税区分. Rates live in config (04) so a rate change never rewrites products. */
+export type TaxCategory = "STANDARD" | "REDUCED" | "EXEMPT";
+export const TAX_CATEGORIES: TaxCategory[] = ["STANDARD", "REDUCED", "EXEMPT"];
+
+/** A sellable item (商材). Deactivated, never deleted: line items keep pointing at it. */
+export interface Product {
+  id: string;
+  code?: string;
+  name: string;
+  category: ProductCategory;
+  /** Tax-exclusive standard unit price. Line items copy it and may override. */
+  unitPrice?: number;
+  cost?: number;
+  taxCategory: TaxCategory;
+  unitLabel?: string;
+  description?: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type LifecycleState = "OPEN" | "WON" | "LOST" | "ON_HOLD" | "CLOSED";
 
 /** Why a deal was lost. Chosen by a person when the deal is marked LOST -- never by the AI. */

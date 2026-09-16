@@ -9,6 +9,7 @@ import type {
   NextAction,
   OpportunityDetail,
   OpportunitySummary,
+  Product,
   ReviewDto,
   SourceDocument,
   UserDto,
@@ -24,6 +25,22 @@ type AIDecisionType = OpportunityDetail["decisions"][number]["decisionType"];
 type AIDecisionStatus = OpportunityDetail["decisions"][number]["status"];
 type ActorType = AuditLog["actorType"];
 type LostReason = NonNullable<OpportunitySummary["lostReason"]>;
+type ProductCategory = Product["category"];
+type TaxCategory = Product["taxCategory"];
+
+export const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
+  GOODS: "物販",
+  SERVICE: "サービス",
+  MAINTENANCE: "保守",
+  SUBSCRIPTION: "サブスク",
+  OTHER: "その他",
+};
+
+export const TAX_CATEGORY_LABEL: Record<TaxCategory, string> = {
+  STANDARD: "標準 10%",
+  REDUCED: "軽減 8%",
+  EXEMPT: "非課税",
+};
 
 export const LOST_REASON_LABEL: Record<LostReason, string> = {
   PRICE: "価格",
@@ -199,6 +216,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   OPPORTUNITY_RESTORED: "案件を復元",
   PERSON_CREATED: "顧客担当者を追加",
   PERSON_UPDATED: "顧客担当者を更新",
+  PRODUCT_CREATED: "商材を登録",
+  PRODUCT_UPDATED: "商材を更新",
   REVIEW_DISMISSED: "確認を却下",
   REVIEW_RESOLVED: "確認を解決",
   SOURCE_DISCARDED: "取込を破棄",

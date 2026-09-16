@@ -3,6 +3,7 @@ import type { RpcStub } from "capnweb";
 import { useEffect, useState } from "react";
 import type { ConfigDto, SalesManagementApi } from "../../src/management-types";
 import { errorMessage, useApiAction, useAsyncData } from "../api";
+import { ProductTable } from "../components/ProductTable";
 
 /** Percentage-displayed confidence thresholds (設計書 §16). Stored as 0..1 fractions. */
 const CONFIDENCE_FIELDS: { key: keyof ConfigDto; label: string; hint: string }[] = [
@@ -252,6 +253,10 @@ export default function SettingsPage({
           placeholder="初回商談, 提案, 見積提示, 稟議中"
           className="h-9 w-full rounded-lg border border-kumo-line bg-kumo-base px-3 text-sm text-kumo-default"
         />
+      </Section>
+
+      <Section title="商材">
+        <ProductTable api={api} canEdit={who.isAdmin} />
       </Section>
 
       <div className="mt-6 flex justify-end">

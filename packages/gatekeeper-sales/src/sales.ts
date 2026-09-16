@@ -24,7 +24,8 @@ import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, ManagerSummary, NextAction, NextActionFilter,
   NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
-  OpportunitySummary, PersonInput, PersonPatch, RegisterIdentityInput, ReviewDto, ReviewResolution,
+  OpportunitySummary, PersonInput, PersonPatch, Product, ProductInput, ProductPatch,
+  RegisterIdentityInput, ReviewDto, ReviewResolution,
   SalesConfig, SourceDocument, TodayView, UserDto,
 } from "@gadgets/sales-core";
 import type { SalesManagementApi, WhoAmI } from "./management-types.js";
@@ -483,6 +484,9 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   updateAccount(accountId: string, patch: AccountPatch): Promise<CustomerAccount> { return this.core.updateAccount(this.caller, accountId, patch); }
   createPerson(accountId: string, input: PersonInput): Promise<CustomerPerson> { return this.core.createPerson(this.caller, accountId, input); }
   updatePerson(personId: string, patch: PersonPatch): Promise<CustomerPerson> { return this.core.updatePerson(this.caller, personId, patch); }
+  listProducts(options?: { includeInactive?: boolean }): Promise<Product[]> { return this.core.listProducts(this.caller, options); }
+  createProduct(input: ProductInput): Promise<Product> { return this.core.createProduct(this.caller, input); }
+  updateProduct(id: string, patch: ProductPatch): Promise<Product> { return this.core.updateProduct(this.caller, id, patch); }
   getCustomer(accountId: string): Promise<CustomerDetail> { return this.core.getCustomer(this.caller, accountId); }
   listNextActions(filter?: NextActionFilter): Promise<NextAction[]> { return this.core.listNextActions(this.caller, filter); }
   createNextAction(input: NextActionInput): Promise<NextAction> { return this.core.createNextAction(this.caller, input); }

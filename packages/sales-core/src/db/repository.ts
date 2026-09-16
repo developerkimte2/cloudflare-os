@@ -5,7 +5,7 @@
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, CalendarEventMirror, Commitment,
   CustomerAccount, CustomerPerson, ExternalIdentity, LifecycleState, NextAction, NextActionStatus,
-  NotificationLog, Opportunity, ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
+  NotificationLog, Opportunity, Product, ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
 } from "../domain/types.js";
 import { normalizeEmail, normalizeName } from "../domain/util.js";
 import type { SqlExecutor, SqlValue } from "./sql.js";
@@ -130,6 +130,29 @@ export class Repository {
 
   deletePerson(id: string): void {
     T.customerPersons.delete(this.db, id);
+  }
+
+  // ---- products -------------------------------------------------------------------------------
+
+  getProduct(id: string): Product | undefined {
+    return T.products.get(this.db, id);
+  }
+
+  listProducts(includeInactive: boolean): Product[] {
+    return T.products.select(this.db,
+      includeInactive ? "ORDER BY sort_order, name" : "WHERE active = 1 ORDER BY sort_order, name");
+  }
+
+  findProductByCode(code: string): Product | undefined {
+    return T.products.select(this.db, "WHERE code = ? LIMIT 1", code)[0];
+  }
+
+  insertProduct(product: Product): void {
+    T.products.insert(this.db, product);
+  }
+
+  updateProduct(product: Product): void {
+    T.products.update(this.db, product);
   }
 
   // ---- opportunities ---------------------------------------------------------------------------
