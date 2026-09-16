@@ -251,4 +251,108 @@ describe("SalesCoreDurableObject (workerd + DO SQLite)", () => {
       expect(await runDurableObjectAlarm(core)).toBe(false);
     });
   });
+
+  describe("closing a deal (C1) over the real RPC boundary", () => {
+    it("WON requires an amount, records close details, and shows up in the audit log", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: true };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      mockLlmOnce(EXTRACTION);
+      const captured = await core.capture(caller,
+        "今日ABCの山田さんと話して、100万はOK。金曜に社内承認が出る。通れば来週契約。月曜に電話する。");
+      const opp = captured.opportunity!;
+
+      const won = await core.updateOpportunity(caller, opp.id, { lifecycleState: "WON", version: opp.version });
+      expect(won.wonAmount).toBe(1_000_000);
+      expect(won.closedAt).toBeTruthy();
+
+      const detail = await core.getOpportunity(caller, opp.id);
+      expect(detail.audit.some(a => a.action === "OPPORTUNITY_CLOSED")).toBe(true);
+
+      const reopened = await core.updateOpportunity(caller, opp.id, { lifecycleState: "OPEN", version: won.version });
+      expect(reopened.wonAmount).toBeUndefined();
+      expect(reopened.closedAt).toBeUndefined();
+    });
+  });
+
+  describe("product master (D1) over the real RPC boundary", () => {
+    it("ADMIN creates/updates a product; a second (SALES-default) user can list but not create", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const admin = { accountId: "acct-1", isAdmin: true };
+      await core.register(admin, { email: "kimura@example.com", displayName: "木村" });
+      const sales = { accountId: "acct-2", isAdmin: false };
+      await core.register(sales, { email: "sato@example.com", displayName: "佐藤" });
+
+      const product = await core.createProduct(admin, { code: "SV-001", name: "導入支援", unitPrice: 300_000 });
+      expect(product.category).toBe("SERVICE");
+
+      const updated = await core.updateProduct(admin, product.id, { unitPrice: 350_000 });
+      expect(updated.unitPrice).toBe(350_000);
+
+      expect(await core.listProducts(sales)).toHaveLength(1);
+      await expect(core.createProduct(sales, { name: "無断作成" })).rejects.toThrow(/マネージャー以上/);
+
+      await core.updateProduct(admin, product.id, { active: false });
+      expect(await core.listProducts(admin)).toHaveLength(0);
+      expect(await core.listProducts(admin, { includeInactive: true })).toHaveLength(1);
+    });
+  });
+
+  describe("line items (D2) over the real RPC boundary", () => {
+    it("saving line items over RPC re-derives expectedAmount and locks direct edits", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: true };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      mockLlmOnce(EXTRACTION);
+      const captured = await core.capture(caller,
+        "今日ABCの山田さんと話して、100万はOK。金曜に社内承認が出る。通れば来週契約。月曜に電話する。");
+      const opp = captured.opportunity!;
+
+      const withItems = await core.setLineItems(caller, opp.id, [
+        { name: "導入支援", quantity: 1, unitPrice: 300_000 },
+        { name: "保守", quantity: 12, unitPrice: 10_000, discountAmount: 20_000 },
+      ], opp.version);
+      expect(withItems.lineItems).toHaveLength(2);
+      expect(withItems.expectedAmount).toBe(300_000 + 120_000 - 20_000);
+      expect(withItems.hasLineItems).toBe(true);
+
+      await expect(
+        core.updateOpportunity(caller, opp.id, { expectedAmount: 1, version: withItems.version }),
+      ).rejects.toThrow(/明細/);
+
+      const cleared = await core.setLineItems(caller, opp.id, [], withItems.version);
+      expect(cleared.lineItems).toHaveLength(0);
+      expect(cleared.hasLineItems).toBe(false);
+      const manualAmount = await core.updateOpportunity(caller, opp.id, { expectedAmount: 42, version: cleared.version });
+      expect(manualAmount.expectedAmount).toBe(42);
+    });
+  });
+
+  describe("team KPI period selector (F1) over the real RPC boundary", () => {
+    it("a LAST_MONTH query counts a deal closed last month, not this month's default", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: true };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      mockLlmOnce(EXTRACTION);
+      const captured = await core.capture(caller,
+        "今日ABCの山田さんと話して、100万はOK。金曜に社内承認が出る。通れば来週契約。月曜に電話する。");
+      const opp = captured.opportunity!;
+
+      const now = new Date();
+      const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15));
+      const closedAt = lastMonth.toISOString().slice(0, 10);
+      await core.updateOpportunity(caller, opp.id, { lifecycleState: "WON", closedAt, version: opp.version });
+
+      const thisMonth = await core.getManagerSummary(caller);
+      expect(thisMonth.kpis.wonThisMonth).toBe(0);
+
+      const summary = await core.getManagerSummary(caller, { period: "LAST_MONTH" });
+      expect(summary.kpis.wonThisMonth).toBe(1);
+      expect(summary.kpis.wonAmountThisMonth).toBe(1_000_000);
+      expect(summary.perUser.find(r => r.userId)?.wonCount).toBe(1);
+    });
+  });
 });
