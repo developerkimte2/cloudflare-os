@@ -5,9 +5,10 @@
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, Commitment, CustomerAccount, CustomerPerson,
   JsonValue, LifecycleState, LostReason, NextAction, NextActionStatus, NextActionType, Opportunity,
-  Priority, Product, ProductCategory, ReviewItem, SourceDocument, SourceType, TaxCategory, User,
-  UserRole,
+  OpportunityLineItem, Priority, Product, ProductCategory, ReviewItem, SourceDocument, SourceType,
+  TaxCategory, User, UserRole,
 } from "../domain/types.js";
+import type { LineTotals } from "../rules/money.js";
 import type { SalesConfig } from "../rules/config.js";
 
 /** Who is calling. Resolved by the adapter from its own identity mechanism. */
@@ -133,6 +134,8 @@ export interface OpportunitySummary {
   lostReason?: LostReason;
   lostReasonNote?: string;
   competitor?: string;
+  /** True when this deal has 明細 rows (D2); expectedAmount then follows their tax-exclusive total. */
+  hasLineItems: boolean;
   currentSituation?: string;
   nextAction?: NextAction;
   lastMeaningfulActivityAt?: string;
@@ -144,6 +147,8 @@ export interface OpportunitySummary {
 export interface OpportunityDetail extends OpportunitySummary {
   account: CustomerAccount;
   persons: CustomerPerson[];
+  lineItems: OpportunityLineItem[];
+  totals: LineTotals;
   context?: AIContextSnapshot;
   nextActions: NextAction[];
   /** Not-yet-adopted/dismissed AI proposals, newest first. */
@@ -242,6 +247,16 @@ export interface ProductPatch {
   unitLabel?: string | null;
   description?: string | null;
   active?: boolean;
+  sortOrder?: number;
+}
+
+export interface LineItemInput {
+  productId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount?: number;
+  taxCategory?: TaxCategory;
   sortOrder?: number;
 }
 

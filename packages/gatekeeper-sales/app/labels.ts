@@ -218,6 +218,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   PERSON_UPDATED: "顧客担当者を更新",
   PRODUCT_CREATED: "商材を登録",
   PRODUCT_UPDATED: "商材を更新",
+  LINE_ITEMS_UPDATED: "明細を更新",
   REVIEW_DISMISSED: "確認を却下",
   REVIEW_RESOLVED: "確認を解決",
   SOURCE_DISCARDED: "取込を破棄",

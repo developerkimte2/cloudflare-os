@@ -5,17 +5,18 @@
  */
 import type {
   AccountPatch, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult, ConfigDto,
-  CustomerDetail, ManagerPerUserRow, ManagerSummary, NextActionFilter, NextActionInput, NextActionPatch,
-  NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch, OpportunitySummary,
-  PersonInput, PersonPatch, ProductInput, ProductPatch, RegisterIdentityInput, ReviewDto,
-  ReviewResolution, TodayAction, TodayView, UserDto,
+  CustomerDetail, LineItemInput, ManagerPerUserRow, ManagerSummary, NextActionFilter, NextActionInput,
+  NextActionPatch, NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch,
+  OpportunitySummary, PersonInput, PersonPatch, ProductInput, ProductPatch, RegisterIdentityInput,
+  ReviewDto, ReviewResolution, TodayAction, TodayView, UserDto,
 } from "../api/dto.js";
 import { toUserDto } from "../api/dto.js";
 import type {
   AIDecision, Commitment, CustomerAccount, CustomerPerson, JsonValue, LifecycleState, LostReason,
-  NextAction, NextActionType, Opportunity, Priority, Product, ReviewItem, SourceDocument, User,
-  UserRole,
+  NextAction, NextActionType, Opportunity, OpportunityLineItem, Priority, Product, ReviewItem,
+  SourceDocument, User, UserRole,
 } from "../domain/types.js";
+import { lineTotals } from "../rules/money.js";
 import {
   addDays, isIsoDateTime, localDate, newId, normalizeEmail, normalizeName, nowIso,
 } from "../domain/util.js";
@@ -399,10 +400,13 @@ export class SalesService {
     if (!o || !this.canSee(user, o)) throw new NotFoundError("案件");
     const account = this.repo.getAccount(o.accountId)!;
     const decisions = this.repo.listDecisionsForEntity("opportunity", id);
+    const lineItems = this.repo.listLineItems(id);
     return {
       ...this.summarize(o),
       account,
       persons: this.repo.listPersonsForAccount(account.id),
+      lineItems,
+      totals: lineTotals(lineItems, this.config),
       context: this.repo.latestSnapshot(id),
       nextActions: this.repo.listNextActionsForOpportunity(id),
       suggestions: nextActionSuggestions(decisions),
@@ -426,7 +430,10 @@ export class SalesService {
     const next: Opportunity = { ...o };
     if (patch.title !== undefined) next.title = patch.title.trim() || o.title;
     if (patch.phaseLabel !== undefined) next.phaseLabel = patch.phaseLabel ?? undefined;
-    if (patch.expectedAmount !== undefined) next.expectedAmount = patch.expectedAmount ?? undefined;
+    if (patch.expectedAmount !== undefined) {
+      if (this.repo.countLineItems(id) > 0) throw new TypeError("明細がある案件の見込金額は明細の合計から計算されます");
+      next.expectedAmount = patch.expectedAmount ?? undefined;
+    }
     if (patch.currency !== undefined) next.currency = patch.currency;
     if (patch.expectedCloseDate !== undefined) next.expectedCloseDate = patch.expectedCloseDate ?? undefined;
     if (patch.proposalDocumentUrl !== undefined) next.proposalDocumentUrl = patch.proposalDocumentUrl?.trim() || undefined;
@@ -491,6 +498,45 @@ export class SalesService {
       return "REOPENED";
     }
     return undefined;
+  }
+
+  /**
+   * Replaces a deal's 明細 wholesale and re-derives expectedAmount from the tax-exclusive total.
+   * With zero rows the deal goes back to a hand-entered expectedAmount (kept as-is).
+   */
+  setLineItems(actor: Actor, opportunityId: string, inputs: LineItemInput[], version: number): OpportunityDetail {
+    const user = this.requireUser(actor);
+    const o = this.repo.getOpportunity(opportunityId);
+    if (!o || !this.canSee(user, o)) throw new NotFoundError("案件");
+    const now = nowIso(this.ctx.clock);
+    const items: OpportunityLineItem[] = inputs.map((input, i) => {
+      const name = input.name.trim();
+      if (!name) throw new TypeError(`${i + 1} 行目: 品目名を入力してください`);
+      if (!Number.isFinite(input.quantity) || input.quantity <= 0) throw new TypeError(`${i + 1} 行目: 数量は 0 より大きい数値で入力してください`);
+      if (!Number.isFinite(input.unitPrice) || input.unitPrice < 0) throw new TypeError(`${i + 1} 行目: 単価は 0 以上で入力してください`);
+      const discount = input.discountAmount ?? 0;
+      if (!Number.isFinite(discount) || discount < 0) throw new TypeError(`${i + 1} 行目: 値引は 0 以上で入力してください`);
+      if (input.productId && !this.repo.getProduct(input.productId)) throw new NotFoundError("品目");
+      return {
+        id: newId(), opportunityId, productId: input.productId, name, quantity: input.quantity,
+        unitPrice: input.unitPrice, discountAmount: discount, taxCategory: input.taxCategory ?? "STANDARD",
+        sortOrder: input.sortOrder ?? i, createdAt: now, updatedAt: now,
+      };
+    });
+    const before = this.repo.listLineItems(opportunityId);
+    return this.repo.transaction(() => {
+      this.repo.replaceLineItems(opportunityId, items);
+      const next: Opportunity = { ...o, updatedAt: now };
+      if (items.length > 0) next.expectedAmount = lineTotals(items, this.config).subtotal;
+      if (!this.repo.updateOpportunity(next, version)) {
+        throw new Error("案件が他のユーザーによって更新されています。再読込してください");
+      }
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "LINE_ITEMS_UPDATED",
+        entityType: "opportunity", entityId: opportunityId,
+        before: { lineItems: before, expectedAmount: o.expectedAmount },
+        after: { lineItems: items, expectedAmount: next.expectedAmount } });
+      return this.getOpportunity(actor, opportunityId);
+    });
   }
 
   // ---- customers -------------------------------------------------------------------------------------
@@ -1060,6 +1106,7 @@ export class SalesService {
       riskLevel: o.riskLevel, riskReason: o.riskReason,
       wonAmount: o.wonAmount, closedAt: o.closedAt, lostReason: o.lostReason,
       lostReasonNote: o.lostReasonNote, competitor: o.competitor,
+      hasLineItems: this.repo.countLineItems(o.id) > 0,
       currentSituation: snapshot?.currentSituation,
       nextAction: nextAction && nextAction.status === "OPEN" ? nextAction : undefined,
       lastMeaningfulActivityAt: o.lastMeaningfulActivityAt,

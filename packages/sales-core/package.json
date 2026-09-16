@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./node-sqlite": "./src/db/node-sqlite.ts",
-    "./pipeline/split": "./src/pipeline/split.ts"
+    "./pipeline/split": "./src/pipeline/split.ts",
+    "./rules/money": "./src/rules/money.ts"
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.test.json",

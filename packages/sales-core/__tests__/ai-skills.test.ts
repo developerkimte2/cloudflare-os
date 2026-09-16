@@ -168,7 +168,7 @@ describe("buildAnswerRequest", () => {
     accountResolutionStatus: "MANUAL", ownerUserId: "user-1", ownerName: "太郎",
     collaboratorUserIds: [], contactPersonIds: [], contactNames: [], contacts: [],
     lifecycleState: "OPEN", operationalState: "ACTIVE",
-    riskLevel: "MEDIUM", riskReason: "返信が遅い",
+    riskLevel: "MEDIUM", riskReason: "返信が遅い", hasLineItems: false,
     nextAction: {
       id: "na-1", opportunityId: "opp-1", assignedUserId: "user-1", actionType: "EMAIL",
       title: "見積書を送付", purpose: "商談を進める", dueAt: "2026-09-15T09:00:00Z",

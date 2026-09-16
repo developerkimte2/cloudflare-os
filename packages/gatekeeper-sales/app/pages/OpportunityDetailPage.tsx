@@ -29,6 +29,7 @@ import {
 } from "../components/Badges";
 import { ConfirmInline } from "../components/ConfirmInline";
 import { CustomerInfo } from "../components/CustomerInfo";
+import { LineItemsSection } from "../components/LineItemsSection";
 import { NextActionRow } from "../components/NextActionRow";
 import { PinnedCaptureBox } from "../components/PinnedCaptureBox";
 import { ReviewCard } from "../components/ReviewCard";
@@ -211,6 +212,10 @@ export default function OpportunityDetailPage({
           onCaptured={reload}
         />
       </div>
+
+      <Section title="明細">
+        <LineItemsSection detail={data} api={api} onSaved={reload} />
+      </Section>
 
       <Section
         title="顧客情報"
@@ -472,12 +477,15 @@ function OpportunityHeader({
             className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
           />
         </Field>
-        <Field label="見込金額">
+        <Field label={opportunity.hasLineItems ? "見込金額（明細合計から自動計算）" : "見込金額"}>
           <input
             type="number"
-            value={expectedAmount}
+            value={opportunity.hasLineItems ? String(opportunity.expectedAmount ?? "") : expectedAmount}
             onChange={(event) => setExpectedAmount(event.currentTarget.value)}
-            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+            readOnly={opportunity.hasLineItems}
+            className={`h-8 w-full rounded-md border border-kumo-line px-2 text-sm text-kumo-default ${
+              opportunity.hasLineItems ? "bg-kumo-tint text-kumo-subtle" : "bg-kumo-base"
+            }`}
           />
         </Field>
         <Field label="受注予定日">

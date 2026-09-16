@@ -17,8 +17,8 @@ import {
   type CustomerAccount, type CustomerDetail, type CustomerPerson, type ManagerSummary,
   type NextAction, type NextActionFilter, type NextActionInput, type NextActionPatch,
   type OpportunityDetail, type OpportunityFilter, type OpportunityPatch, type OpportunitySummary,
-  type PersonInput, type PersonPatch, type Product, type ProductInput, type ProductPatch,
-  type RegisterIdentityInput, type ReviewDto, type ReviewResolution, type SalesConfig,
+  type LineItemInput, type PersonInput, type PersonPatch, type Product, type ProductInput,
+  type ProductPatch, type RegisterIdentityInput, type ReviewDto, type ReviewResolution, type SalesConfig,
   type SourceDocument, type TodayView, type UserDto, toUserDto,
 } from "@gadgets/sales-core";
 import { buildLlm, describeAi } from "./llm.js";
@@ -263,6 +263,10 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
 
   async updateProduct(caller: Caller, id: string, patch: ProductPatch): Promise<Product> {
     return this.#service.updateProduct(this.#actor(caller), id, patch);
+  }
+
+  async setLineItems(caller: Caller, opportunityId: string, items: LineItemInput[], version: number): Promise<OpportunityDetail> {
+    return this.#service.setLineItems(this.#actor(caller), opportunityId, items, version);
   }
 
   async getCustomer(caller: Caller, accountId: string): Promise<CustomerDetail> {

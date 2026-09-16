@@ -22,7 +22,8 @@ import type {
 } from "@gadgets/workshop-shared/gatekeeper";
 import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
-  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, ManagerSummary, NextAction, NextActionFilter,
+  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, LineItemInput, ManagerSummary, NextAction,
+  NextActionFilter,
   NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
   OpportunitySummary, PersonInput, PersonPatch, Product, ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution,
@@ -487,6 +488,9 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   listProducts(options?: { includeInactive?: boolean }): Promise<Product[]> { return this.core.listProducts(this.caller, options); }
   createProduct(input: ProductInput): Promise<Product> { return this.core.createProduct(this.caller, input); }
   updateProduct(id: string, patch: ProductPatch): Promise<Product> { return this.core.updateProduct(this.caller, id, patch); }
+  setLineItems(opportunityId: string, items: LineItemInput[], version: number): Promise<OpportunityDetail> {
+    return this.core.setLineItems(this.caller, opportunityId, items, version);
+  }
   getCustomer(accountId: string): Promise<CustomerDetail> { return this.core.getCustomer(this.caller, accountId); }
   listNextActions(filter?: NextActionFilter): Promise<NextAction[]> { return this.core.listNextActions(this.caller, filter); }
   createNextAction(input: NextActionInput): Promise<NextAction> { return this.core.createNextAction(this.caller, input); }

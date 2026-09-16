@@ -1,7 +1,7 @@
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, CalendarEventMirror, Commitment,
   CustomerAccount, CustomerPerson, ExternalIdentity, NextAction, NotificationLog, Opportunity,
-  Product, ReviewItem, SourceApplication, SourceDocument, User,
+  OpportunityLineItem, Product, ReviewItem, SourceApplication, SourceDocument, User,
 } from "../domain/types.js";
 import { Table, col } from "./mapper.js";
 
@@ -36,6 +36,13 @@ export const products = new Table<Product>("products", "id", [
   col("id", "id"), col("code", "code"), col("name", "name"), col("category", "category"),
   col("unit_price", "unitPrice"), col("cost", "cost"), col("tax_category", "taxCategory"),
   col("unit_label", "unitLabel"), col("description", "description"), col("active", "active", "bool"),
+  col("sort_order", "sortOrder"), col("created_at", "createdAt"), col("updated_at", "updatedAt"),
+]);
+
+export const opportunityLineItems = new Table<OpportunityLineItem>("opportunity_line_items", "id", [
+  col("id", "id"), col("opportunity_id", "opportunityId"), col("product_id", "productId"),
+  col("name", "name"), col("quantity", "quantity"), col("unit_price", "unitPrice"),
+  col("discount_amount", "discountAmount"), col("tax_category", "taxCategory"),
   col("sort_order", "sortOrder"), col("created_at", "createdAt"), col("updated_at", "updatedAt"),
 ]);
 

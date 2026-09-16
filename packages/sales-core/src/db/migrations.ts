@@ -366,6 +366,25 @@ CREATE TABLE products (
 CREATE INDEX idx_products_active ON products(active, sort_order);
 `,
   },
+  {
+    id: "0009_opportunity_line_items",
+    sql: `
+CREATE TABLE opportunity_line_items (
+  id TEXT PRIMARY KEY,
+  opportunity_id TEXT NOT NULL REFERENCES opportunities(id),
+  product_id TEXT REFERENCES products(id),
+  name TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_price REAL NOT NULL DEFAULT 0,
+  discount_amount REAL NOT NULL DEFAULT 0,
+  tax_category TEXT NOT NULL DEFAULT 'STANDARD' CHECK (tax_category IN ('STANDARD','REDUCED','EXEMPT')),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_line_items_opportunity ON opportunity_line_items(opportunity_id, sort_order);
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

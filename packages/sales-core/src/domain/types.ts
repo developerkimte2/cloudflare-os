@@ -95,6 +95,23 @@ export interface Product {
   updatedAt: string;
 }
 
+/** One row of a deal's 明細. Snapshots the product name so a rename never rewrites history. */
+export interface OpportunityLineItem {
+  id: string;
+  opportunityId: string;
+  productId?: string;
+  name: string;
+  quantity: number;
+  /** Tax-exclusive. */
+  unitPrice: number;
+  /** Tax-exclusive discount on this row (>= 0). */
+  discountAmount: number;
+  taxCategory: TaxCategory;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type LifecycleState = "OPEN" | "WON" | "LOST" | "ON_HOLD" | "CLOSED";
 
 /** Why a deal was lost. Chosen by a person when the deal is marked LOST -- never by the AI. */

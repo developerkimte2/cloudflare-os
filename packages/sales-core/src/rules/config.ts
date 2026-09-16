@@ -3,6 +3,7 @@
  * `settings` table so nothing is hard-coded into prompts or rules.
  */
 import type { Repository } from "../db/repository.js";
+import type { TaxCategory } from "../domain/types.js";
 
 export interface SalesConfig {
   /** Auto-link a customer only at or above this (設計書: 0.99). */
@@ -29,6 +30,9 @@ export interface SalesConfig {
   defaultTimezone: string;
   /** Company-specific phase labels offered in the UI; never a domain constraint. */
   phaseLabels: string[];
+  /** Tax rate per 消費税区分 (D2). A rate change here never rewrites existing line items. */
+  taxRates: Record<TaxCategory, number>;
+  taxRounding: "FLOOR" | "ROUND" | "CEIL";
 }
 
 export const DEFAULT_CONFIG: SalesConfig = {
@@ -47,6 +51,8 @@ export const DEFAULT_CONFIG: SalesConfig = {
   defaultCurrency: "JPY",
   defaultTimezone: "Asia/Tokyo",
   phaseLabels: [],
+  taxRates: { STANDARD: 0.1, REDUCED: 0.08, EXEMPT: 0 },
+  taxRounding: "FLOOR",
 };
 
 export const CONFIG_SETTING_KEY = "config";

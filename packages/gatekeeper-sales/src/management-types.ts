@@ -8,22 +8,24 @@
  */
 import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
-  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerKpis, ManagerPerUserRow,
+  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
+  ManagerKpis, ManagerPerUserRow,
   ManagerSummary, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch, Product,
-  ProductInput, ProductPatch,
+  OpportunityFilter, OpportunityLineItem, OpportunityPatch, OpportunitySummary, PersonInput,
+  PersonPatch, Product, ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
   TodayView, UserDto,
 } from "@gadgets/sales-core";
 
 export type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
-  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, ManagerKpis, ManagerPerUserRow,
+  ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
+  ManagerKpis, ManagerPerUserRow,
   ManagerSummary, NextAction,
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
-  OpportunityFilter, OpportunityPatch, OpportunitySummary, PersonInput, PersonPatch, Product,
-  ProductInput, ProductPatch,
+  OpportunityFilter, OpportunityLineItem, OpportunityPatch, OpportunitySummary, PersonInput,
+  PersonPatch, Product, ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
   TodayView, UserDto,
 };
@@ -83,6 +85,8 @@ export interface SalesManagementApi {
   listProducts(options?: { includeInactive?: boolean }): Promise<Product[]>;
   createProduct(input: ProductInput): Promise<Product>;
   updateProduct(id: string, patch: ProductPatch): Promise<Product>;
+  /** Replaces a deal's 明細 wholesale; expectedAmount then follows the tax-exclusive line total. */
+  setLineItems(opportunityId: string, items: LineItemInput[], version: number): Promise<OpportunityDetail>;
   /** Company info, contacts, and every opportunity of this customer the caller can see. */
   getCustomer(accountId: string): Promise<CustomerDetail>;
 

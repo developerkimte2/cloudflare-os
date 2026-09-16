@@ -547,7 +547,9 @@ function applyExtraction(
     state.confidence, state.reviews.length ? "REVIEW_REQUIRED" : "AUTO_APPLIED",
     state.reason ?? "状態を推定");
 
-  const amount = deriveAmount(x, opportunityBefore, ctx.config);
+  const amount = ctx.repo.countLineItems(opportunity.id) > 0
+    ? { reviews: [] as ReviewTrigger[] }   // 明細がある案件: 金額は明細が正。AI は触らない
+    : deriveAmount(x, opportunityBefore, ctx.config);
   if (amount.expectedAmount !== undefined) {
     opportunity.expectedAmount = amount.expectedAmount;
     opportunity.currency = amount.currency ?? ctx.config.defaultCurrency;

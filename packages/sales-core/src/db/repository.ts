@@ -5,7 +5,8 @@
 import type {
   AIContextSnapshot, AIDecision, Activity, AuditLog, CalendarEventMirror, Commitment,
   CustomerAccount, CustomerPerson, ExternalIdentity, LifecycleState, NextAction, NextActionStatus,
-  NotificationLog, Opportunity, Product, ReviewItem, ReviewStatus, SourceApplication, SourceDocument, User,
+  NotificationLog, Opportunity, OpportunityLineItem, Product, ReviewItem, ReviewStatus,
+  SourceApplication, SourceDocument, User,
 } from "../domain/types.js";
 import { normalizeEmail, normalizeName } from "../domain/util.js";
 import type { SqlExecutor, SqlValue } from "./sql.js";
@@ -153,6 +154,23 @@ export class Repository {
 
   updateProduct(product: Product): void {
     T.products.update(this.db, product);
+  }
+
+  // ---- line items -----------------------------------------------------------------------------
+
+  listLineItems(opportunityId: string): OpportunityLineItem[] {
+    return T.opportunityLineItems.select(this.db, "WHERE opportunity_id = ? ORDER BY sort_order, created_at", opportunityId);
+  }
+
+  /** Replace-all: the UI always sends the whole table, so no per-row diffing. */
+  replaceLineItems(opportunityId: string, items: OpportunityLineItem[]): void {
+    this.db.run("DELETE FROM opportunity_line_items WHERE opportunity_id = ?", opportunityId);
+    for (const item of items) T.opportunityLineItems.insert(this.db, item);
+  }
+
+  countLineItems(opportunityId: string): number {
+    return this.db.one<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM opportunity_line_items WHERE opportunity_id = ?", opportunityId)!.n;
   }
 
   // ---- opportunities ---------------------------------------------------------------------------

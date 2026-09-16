@@ -7,7 +7,7 @@ function opportunity(overrides: Partial<OpportunitySummary> = {}): OpportunitySu
     id: "opp-1", title: "新機能提案", accountId: "acc-1", accountName: "ABC株式会社",
     accountResolutionStatus: "MANUAL", ownerUserId: "user-1", ownerName: "太郎",
     collaboratorUserIds: [], contactPersonIds: [], contactNames: [], lifecycleState: "OPEN", operationalState: "ACTIVE",
-    riskLevel: "MEDIUM", updatedAt: "2026-09-08T01:00:00Z", version: 1,
+    riskLevel: "MEDIUM", hasLineItems: false, updatedAt: "2026-09-08T01:00:00Z", version: 1,
     ...overrides,
   };
 }
