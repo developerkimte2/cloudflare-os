@@ -654,29 +654,35 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // Summary cards (numeric at-a-glance view -- separate from ContextSection's AI-written narrative)
 // ---------------------------------------------------------------------------
 
-function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
+/** One label/value row. No wrapping: the value truncates with an ellipsis instead of breaking to a second line. */
+function SummaryRow({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
-    <div>
-      <p className="text-[11px] font-medium text-kumo-inactive">{label}</p>
-      <p className={`mt-0.5 text-sm font-medium ${tone === "danger" ? "text-kumo-danger" : "text-kumo-default"}`}>{value}</p>
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
+      <span className="shrink-0 text-xs text-kumo-inactive">{label}</span>
+      <span
+        className={`truncate text-right text-sm font-medium ${tone === "danger" ? "text-kumo-danger" : "text-kumo-default"}`}
+        title={value}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
-/** This deal's own numbers -- amount, state, next action, risk -- in one glance. */
+/** This deal's own numbers -- amount, state, next action, risk -- in one glance, as a plain list. */
 function DealSummaryCard({ opportunity, timezone }: { opportunity: OpportunityDetail; timezone: string }) {
   const amountLabel = opportunity.lifecycleState === "WON" ? "受注額" : "見込金額";
   const amount = opportunity.lifecycleState === "WON" ? opportunity.wonAmount : opportunity.expectedAmount;
   return (
     <div className="rounded-xl border border-kumo-line bg-kumo-control p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">この案件</p>
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <SummaryStat
+      <div className="mt-1 divide-y divide-kumo-line">
+        <SummaryRow
           label={amountLabel}
           value={amount != null ? `${amount.toLocaleString("ja-JP")} ${opportunity.currency ?? "JPY"}` : "未設定"}
         />
-        <SummaryStat label="状態" value={LIFECYCLE_LABEL[opportunity.lifecycleState]} />
-        <SummaryStat
+        <SummaryRow label="状態" value={LIFECYCLE_LABEL[opportunity.lifecycleState]} />
+        <SummaryRow
           label="次アクション"
           value={
             opportunity.nextAction
@@ -684,7 +690,7 @@ function DealSummaryCard({ opportunity, timezone }: { opportunity: OpportunityDe
               : "なし"
           }
         />
-        <SummaryStat
+        <SummaryRow
           label="リスク"
           value={`${RISK_LABEL[opportunity.riskLevel]}${opportunity.riskReason ? ` - ${opportunity.riskReason}` : ""}`}
           tone={opportunity.riskLevel === "HIGH" ? "danger" : undefined}
@@ -694,7 +700,7 @@ function DealSummaryCard({ opportunity, timezone }: { opportunity: OpportunityDe
   );
 }
 
-/** The customer's numbers across every deal this viewer can see (not just this one). */
+/** The customer's numbers across every deal this viewer can see (not just this one), as a plain list. */
 function AccountSummaryCard({
   summary,
   onOpenCustomer,
@@ -710,17 +716,15 @@ function AccountSummaryCard({
     <div className="rounded-xl border border-kumo-line bg-kumo-control p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">この企業</p>
-        <button type="button" onClick={onOpenCustomer} className="text-xs text-kumo-link hover:underline">
+        <button type="button" onClick={onOpenCustomer} className="shrink-0 text-xs text-kumo-link hover:underline">
           全案件 →
         </button>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <SummaryStat label="進行中案件" value={`${summary.openCount} 件`} />
-        <SummaryStat label="見込金額合計" value={`${summary.expectedAmountTotal.toLocaleString("ja-JP")} ${summary.currency}`} />
+      <div className="mt-1 divide-y divide-kumo-line">
+        <SummaryRow label="進行中案件" value={`${summary.openCount} 件`} />
+        <SummaryRow label="見込金額合計" value={`${summary.expectedAmountTotal.toLocaleString("ja-JP")} ${summary.currency}`} />
+        {warnings.length > 0 && <SummaryRow label="警告" value={`⚠ ${warnings.join("・")}`} tone="danger" />}
       </div>
-      {warnings.length > 0 && (
-        <p className="mt-3 text-xs font-medium text-kumo-danger">⚠ {warnings.join("・")}</p>
-      )}
     </div>
   );
 }
