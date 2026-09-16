@@ -200,6 +200,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   ACTIVITY_DETACHED: "活動の紐付けを解除",
   COMMITMENT_DUE_SET: "約束の期限を設定",
   COMMITMENT_UPDATED: "約束を更新",
+  COMPANY_DB_SYNCED: "企業DBを同期",
   CONFIG_UPDATED: "設定を変更",
   CONTEXT_RECOMPUTED: "AI整理を再計算",
   CUSTOMER_CONFIRMED_NEW: "新規顧客として確定",

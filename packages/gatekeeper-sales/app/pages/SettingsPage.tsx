@@ -1,7 +1,7 @@
 import { useKumoToastManager } from "@cloudflare/kumo";
 import type { RpcStub } from "capnweb";
 import { useEffect, useState } from "react";
-import type { ConfigDto, SalesManagementApi } from "../../src/management-types";
+import type { CompanyDbSyncResult, ConfigDto, SalesManagementApi } from "../../src/management-types";
 import { errorMessage, useApiAction, useAsyncData } from "../api";
 import { ProductTable } from "../components/ProductTable";
 
@@ -50,6 +50,8 @@ export default function SettingsPage({
   const [saving, setSaving] = useState(false);
   const [sendingSlackTest, setSendingSlackTest] = useState(false);
   const [sendingMorningBrief, setSendingMorningBrief] = useState(false);
+  const [syncingCompanyDb, setSyncingCompanyDb] = useState(false);
+  const [companyDbResult, setCompanyDbResult] = useState<CompanyDbSyncResult>();
 
   const sendSlackTest = async () => {
     setSendingSlackTest(true);
@@ -76,6 +78,28 @@ export default function SettingsPage({
       toasts.add({ title: "Morning Brief の送信に失敗しました", description: errorMessage(caught), variant: "error" });
     } finally {
       setSendingMorningBrief(false);
+    }
+  };
+
+  const syncCompanyDb = async () => {
+    if (!form) return;
+    setSyncingCompanyDb(true);
+    setCompanyDbResult(undefined);
+    try {
+      // Save the URL first so the DO's fetch uses what's on screen, not a stale saved value.
+      await api.updateConfig({ companyDbSheetUrl: form.companyDbSheetUrl });
+      const result = await api.syncCompanyDb();
+      setCompanyDbResult(result);
+      toasts.add({
+        title: "企業DBを同期しました",
+        description: `顧客 ${result.accountsCreated}件登録・${result.accountsUpdated}件更新、担当者 ${result.personsCreated}件登録・${result.personsUpdated}件更新。`,
+        variant: result.errors.length > 0 ? "info" : "success",
+      });
+      reload();
+    } catch (caught) {
+      toasts.add({ title: "企業DBの同期に失敗しました", description: errorMessage(caught), variant: "error" });
+    } finally {
+      setSyncingCompanyDb(false);
     }
   };
 
@@ -329,6 +353,50 @@ export default function SettingsPage({
       <Section title="商材">
         <ProductTable api={api} canEdit={who.isAdmin} />
       </Section>
+
+      {who.isAdmin && (
+        <Section title="企業DB連携 (Google スプレッドシート)">
+          <p className="mb-1.5 text-xs text-kumo-subtle">
+            会社名・法人番号・業種・住所・担当者（氏名・部署・役職・メール・電話）の一覧を持つ Google スプレッドシートの URL
+            を指定すると、「今すぐ同期」で顧客・担当者としてまとめて取り込みます（法人番号または会社名で既存と照合、無ければ新規登録）。
+            シートは「リンクを知っている全員が閲覧者」に共有しておく必要があります。
+          </p>
+          <input
+            value={form.companyDbSheetUrl}
+            onChange={(event) => setForm((current) => (current ? { ...current, companyDbSheetUrl: event.currentTarget.value } : current))}
+            placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+            className="h-9 w-full rounded-lg border border-kumo-line bg-kumo-base px-3 text-sm text-kumo-default"
+          />
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              disabled={syncingCompanyDb || !form.companyDbSheetUrl.trim()}
+              onClick={() => void syncCompanyDb()}
+              className="press rounded-lg bg-kumo-brand px-3.5 py-1.5 text-sm font-medium text-white hover:bg-kumo-brand-hover disabled:opacity-50"
+            >
+              {syncingCompanyDb ? "同期中…" : "今すぐ同期"}
+            </button>
+          </div>
+          {companyDbResult && (
+            <div className="mt-3 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3 text-sm text-kumo-default">
+              <p>
+                読み込み {companyDbResult.rowsRead} 行 ／ 顧客 登録 {companyDbResult.accountsCreated} 件・更新 {companyDbResult.accountsUpdated} 件
+                ／ 担当者 登録 {companyDbResult.personsCreated} 件・更新 {companyDbResult.personsUpdated} 件
+              </p>
+              {companyDbResult.errors.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs font-medium text-kumo-danger">エラー {companyDbResult.errors.length} 件</p>
+                  <ul className="mt-1 list-inside list-disc text-xs text-kumo-subtle">
+                    {companyDbResult.errors.map((e, i) => (
+                      <li key={i}>{e.row} 行目: {e.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </Section>
+      )}
 
       <div className="mt-6 flex justify-end">
         <button

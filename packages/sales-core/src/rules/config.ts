@@ -35,6 +35,12 @@ export interface SalesConfig {
   taxRounding: "FLOOR" | "ROUND" | "CEIL";
   /** 1-12: the calendar month a fiscal year starts in (F1). Drives THIS_QUARTER/THIS_FY/LAST_FY. */
   fiscalYearStartMonth: number;
+  /**
+   * 企業DB連携: a Google Sheets share URL (or its /export?format=csv URL directly) whose first row
+   * is a header and whose columns match the company-DB sheet's layout (会社名, 法人番号, 業種,
+   * 郵便番号, 住所, 会社電話, 会社URL, 部署, 役職, 氏名, メールアドレス, 携帯電話). Empty = not configured.
+   */
+  companyDbSheetUrl: string;
 }
 
 export const DEFAULT_CONFIG: SalesConfig = {
@@ -56,6 +62,7 @@ export const DEFAULT_CONFIG: SalesConfig = {
   taxRates: { STANDARD: 0.1, REDUCED: 0.08, EXEMPT: 0 },
   taxRounding: "FLOOR",
   fiscalYearStartMonth: 4,
+  companyDbSheetUrl: "",
 };
 
 export const CONFIG_SETTING_KEY = "config";

@@ -53,12 +53,19 @@ const replies: Reply[] = [];
 // Slack sends (sendSlackTest / sendMorningBrief) are recorded here instead of scripted — every test
 // that triggers one is expected to consume it via slackPosts.shift(), same discipline as `replies`.
 const slackPosts: string[] = [];
+// syncCompanyDb's Google Sheets CSV fetch, consumed in order like `replies`.
+const sheetCsvReplies: { status: number; body: string }[] = [];
 const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (url === "https://slack.com/api/chat.postMessage") {
     const body = JSON.parse(String(init?.body)) as { text: string };
     slackPosts.push(body.text);
     return Response.json({ ok: true });
+  }
+  if (url.startsWith("https://docs.google.com/spreadsheets/")) {
+    const next = sheetCsvReplies.shift();
+    if (!next) throw new Error("no scripted sheet CSV reply left");
+    return new Response(next.body, { status: next.status });
   }
   if (!url.startsWith("http://llm.test/v1/chat/completions")) {
     throw new Error(`unexpected outbound fetch: ${url}`);
@@ -83,6 +90,7 @@ describe("SalesCoreDurableObject (workerd + DO SQLite)", () => {
   afterEach(() => {
     expect(replies).toHaveLength(0);
     expect(slackPosts).toHaveLength(0);
+    expect(sheetCsvReplies).toHaveLength(0);
   });
 
   it("registers, captures, reviews and reverts on real DO storage", async () => {
@@ -416,6 +424,40 @@ describe("SalesCoreDurableObject (workerd + DO SQLite)", () => {
       const targetDetail = await core.getOpportunity(caller, target.opportunity!.id);
       expect(targetDetail.activities.length).toBeGreaterThanOrEqual(1);
       expect(targetDetail.audit.some(a => a.action === "OPPORTUNITY_MERGED")).toBe(true);
+    });
+  });
+
+  describe("syncCompanyDb (企業DB連携) over the real RPC boundary", () => {
+    const SHEET_CSV =
+      "会社名,法人番号,業種,住所,会社電話,会社URL,部署,役職,氏名,メールアドレス,携帯電話\n" +
+      "株式会社ネオリンク,1010001123456,情報通信業,東京都千代田区1-1,03-1234-5601,https://neolink.example.com,営業部,課長,田中 一郎,tanaka@neolink.example.com,090-1111-2201\n";
+
+    it("fetches the configured sheet URL's CSV export and imports it", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: true };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+      await core.updateConfig(caller, {
+        companyDbSheetUrl: "https://docs.google.com/spreadsheets/d/ABC123/edit?usp=sharing",
+      });
+
+      sheetCsvReplies.push({ status: 200, body: SHEET_CSV });
+      const result = await core.syncCompanyDb(caller);
+      expect(result).toMatchObject({ accountsCreated: 1, personsCreated: 1, errors: [] });
+
+      const opportunities = await core.listOpportunities(caller);
+      expect(opportunities).toHaveLength(0); // import creates accounts/persons only, never a deal
+    });
+
+    it("rejects when no URL is configured, and surfaces a 401/403 as a 共有設定 hint", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: true };
+      await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+
+      await expect(core.syncCompanyDb(caller)).rejects.toThrow(/設定されていません/);
+
+      await core.updateConfig(caller, { companyDbSheetUrl: "https://docs.google.com/spreadsheets/d/ABC123/edit" });
+      sheetCsvReplies.push({ status: 401, body: "" });
+      await expect(core.syncCompanyDb(caller)).rejects.toThrow(/共有設定/);
     });
   });
 });

@@ -22,6 +22,7 @@ import type {
 } from "@gadgets/workshop-shared/gatekeeper";
 import type {
   AccountPatch, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  CompanyDbSyncResult,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, LineItemInput, ManagerSummary,
   ManagerSummaryQuery, NextAction,
   NextActionFilter,
@@ -507,6 +508,7 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   listUsers(): Promise<UserDto[]> { return this.core.listUsers(this.caller); }
   updateUser(userId: string, patch: Partial<Pick<UserDto, "displayName" | "role" | "managerUserId" | "timezone" | "active">>): Promise<UserDto> { return this.core.updateUser(this.caller, userId, patch); }
   getConfig(): Promise<ConfigDto> { return this.core.getConfig(this.caller); }
+  syncCompanyDb(): Promise<CompanyDbSyncResult> { return this.core.syncCompanyDb(this.caller); }
   updateConfig(patch: Partial<SalesConfig>): Promise<ConfigDto> { return this.core.updateConfig(this.caller, patch); }
   listAudit(entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]> { return this.core.listAudit(this.caller, entityType, entityId, limit); }
   sendSlackTest(): Promise<void> { return this.core.sendSlackTest(this.caller); }

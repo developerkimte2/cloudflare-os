@@ -8,6 +8,7 @@
  */
 import type {
   AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  CompanyDbSyncResult,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
   ManagerSummary, ManagerSummaryQuery, NextAction,
@@ -20,6 +21,7 @@ import type {
 
 export type {
   AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  CompanyDbSyncResult,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
   ManagerSummary, ManagerSummaryQuery, NextAction,
@@ -112,6 +114,11 @@ export interface SalesManagementApi {
   updateUser(userId: string, patch: Partial<Pick<UserDto, "displayName" | "role" | "managerUserId" | "timezone" | "active">>): Promise<UserDto>;
   getConfig(): Promise<ConfigDto>;
   updateConfig(patch: Partial<SalesConfig>): Promise<ConfigDto>;
+  /**
+   * 企業DB連携. ADMIN only. Fetches config.companyDbSheetUrl (a Google Sheets share link) as CSV
+   * and imports/updates customer_accounts and customer_persons from it.
+   */
+  syncCompanyDb(): Promise<CompanyDbSyncResult>;
   listAudit(entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]>;
 
   /** ADMIN only. Sends a fixed test message to the configured Slack channel; throws if unconfigured. */

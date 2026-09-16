@@ -4,8 +4,8 @@
  * here is synchronous except the steps that call the LLM.
  */
 import type {
-  AccountPatch, AccountSummary, Actor, AnswerResult, AttentionItem, CaptureOptions, CaptureResult,
-  ConfigDto,
+  AccountPatch, AccountSummary, Actor, AnswerResult, AttentionItem, CaptureOptions,
+  CaptureResult, CompanyDbSyncResult, ConfigDto,
   CustomerDetail, LineItemInput, ManagerPerUserRow, ManagerSummary, ManagerSummaryQuery,
   NextActionFilter, NextActionInput,
   NextActionPatch, NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch,
@@ -18,6 +18,7 @@ import type {
   NextAction, NextActionType, Opportunity, OpportunityLineItem, Priority, Product, ReviewItem,
   SourceDocument, User, UserRole,
 } from "../domain/types.js";
+import { CSV_MAX_ROWS, parseCsvRecords } from "../rules/csv.js";
 import { lineTotals } from "../rules/money.js";
 import { periodLabel, resolvePeriod } from "../rules/period.js";
 import {
@@ -600,12 +601,102 @@ export class SalesService {
     if (patch.address !== undefined) next.address = cleanText(patch.address);
     if (patch.phone !== undefined) next.phone = cleanText(patch.phone);
     if (patch.websiteUrl !== undefined) next.websiteUrl = cleanUrl(patch.websiteUrl);
+    if (patch.corporateNumber !== undefined) next.corporateNumber = cleanText(patch.corporateNumber);
+    if (patch.industry !== undefined) next.industry = cleanText(patch.industry);
     this.repo.transaction(() => {
       this.repo.updateAccount(next);
       audit(this.ctx, { actorType: "USER", actorId: user.id, action: "CUSTOMER_UPDATED",
         entityType: "customer_account", entityId: accountId, before: account, after: next });
     });
     return next;
+  }
+
+  /**
+   * 企業DB連携: imports/updates customer_accounts and customer_persons from a company-DB CSV
+   * (Sansan-style export: see SalesConfig.companyDbSheetUrl's column list). Matches accounts by
+   * 法人番号 first (precise), falling back to normalized company name; matches persons by email.
+   * Row-level errors (bad data, a person already tied to a different account) are collected rather
+   * than aborting the whole sync -- one bad row shouldn't block the other 49.
+   */
+  importCompanyDb(actor: Actor, csvText: string): CompanyDbSyncResult {
+    const user = this.requireUser(actor);
+    if (user.role !== "ADMIN") throw new AuthorizationError("企業DB連携は管理者のみ実行できます");
+    const records = parseCsvRecords(csvText);
+    if (records.length > CSV_MAX_ROWS) {
+      throw new TypeError(`${CSV_MAX_ROWS.toLocaleString()} 行を超えています。シートを分けてください`);
+    }
+    const now = nowIso(this.ctx.clock);
+    const result: CompanyDbSyncResult = {
+      accountsCreated: 0, accountsUpdated: 0, personsCreated: 0, personsUpdated: 0,
+      rowsRead: records.length, errors: [],
+    };
+    return this.repo.transaction(() => {
+      for (let i = 0; i < records.length; i++) {
+        const r = records[i]!;
+        const rowNum = i + 2; // header is row 1
+        try {
+          const companyName = (r["会社名"] ?? "").trim();
+          if (!companyName) { result.errors.push({ row: rowNum, message: "会社名が空です" }); continue; }
+          const corporateNumber = cleanText(r["法人番号"]);
+
+          let account = corporateNumber ? this.repo.findAccountByCorporateNumber(corporateNumber) : undefined;
+          if (!account) account = this.repo.findAccountsByNormalizedName(normalizeName(companyName))[0];
+
+          if (account) {
+            const next: CustomerAccount = {
+              ...account,
+              address: cleanText(r["住所"]) ?? account.address,
+              phone: cleanText(r["会社電話"]) ?? account.phone,
+              websiteUrl: cleanUrl(r["会社URL"]) ?? account.websiteUrl,
+              corporateNumber: corporateNumber ?? account.corporateNumber,
+              industry: cleanText(r["業種"]) ?? account.industry,
+              updatedAt: now,
+            };
+            this.repo.updateAccount(next);
+            result.accountsUpdated += 1;
+            account = next;
+          } else {
+            account = {
+              id: newId(), displayName: companyName, normalizedName: normalizeName(companyName),
+              address: cleanText(r["住所"]), phone: cleanText(r["会社電話"]), websiteUrl: cleanUrl(r["会社URL"]),
+              corporateNumber, industry: cleanText(r["業種"]),
+              resolutionStatus: "MANUAL", createdAt: now, updatedAt: now,
+            };
+            this.repo.insertAccount(account);
+            result.accountsCreated += 1;
+          }
+
+          const personName = (r["氏名"] ?? "").trim();
+          if (!personName) continue;
+          const email = cleanEmail(r["メールアドレス"]);
+          const title = [cleanText(r["部署"]), cleanText(r["役職"])].filter((s): s is string => !!s).join(" ") || undefined;
+          const phone = cleanText(r["携帯電話"]);
+          const existing = email ? this.repo.findPersonByEmail(email) : undefined;
+          if (existing) {
+            if (existing.accountId && existing.accountId !== account.id) {
+              result.errors.push({ row: rowNum, message: `担当者「${personName}」は既に別の顧客に登録されています（メール重複）` });
+            } else {
+              this.repo.updatePerson({
+                ...existing, accountId: account.id, displayName: personName,
+                title: title ?? existing.title, phone: phone ?? existing.phone, updatedAt: now,
+              });
+              result.personsUpdated += 1;
+            }
+          } else {
+            this.repo.insertPerson({
+              id: newId(), accountId: account.id, displayName: personName, email, phone, title,
+              resolutionStatus: "MANUAL", createdAt: now, updatedAt: now,
+            });
+            result.personsCreated += 1;
+          }
+        } catch (err) {
+          result.errors.push({ row: rowNum, message: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "COMPANY_DB_SYNCED",
+        entityType: "tenant", entityId: "tenant", after: result });
+      return result;
+    });
   }
 
   createPerson(actor: Actor, accountId: string, input: PersonInput): CustomerPerson {

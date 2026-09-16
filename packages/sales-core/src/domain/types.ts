@@ -49,6 +49,9 @@ export interface CustomerAccount {
   address?: string;
   phone?: string;
   websiteUrl?: string;
+  /** 法人番号 (13-digit). Set by a company-DB sync (external ID databases key on this). */
+  corporateNumber?: string;
+  industry?: string;
   externalProvider?: string;
   externalAccountId?: string;
   resolutionStatus: ResolutionStatus;

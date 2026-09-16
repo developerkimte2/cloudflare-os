@@ -385,6 +385,14 @@ CREATE TABLE opportunity_line_items (
 CREATE INDEX idx_line_items_opportunity ON opportunity_line_items(opportunity_id, sort_order);
 `,
   },
+  {
+    id: "0010_customer_account_company_db_fields",
+    sql: `
+ALTER TABLE customer_accounts ADD COLUMN corporate_number TEXT;
+ALTER TABLE customer_accounts ADD COLUMN industry TEXT;
+CREATE INDEX idx_customer_accounts_corporate_number ON customer_accounts(corporate_number);
+`,
+  },
 ];
 
 /** Applies every pending migration in order. Idempotent. */

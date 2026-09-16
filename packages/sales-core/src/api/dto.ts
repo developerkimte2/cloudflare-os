@@ -222,6 +222,20 @@ export interface AccountPatch {
   address?: string | null;
   phone?: string | null;
   websiteUrl?: string | null;
+  corporateNumber?: string | null;
+  industry?: string | null;
+}
+
+/** One imported row that couldn't be applied (a validation error, not a fetch/network failure). */
+export interface CompanyDbSyncError { row: number; message: string }
+
+export interface CompanyDbSyncResult {
+  accountsCreated: number;
+  accountsUpdated: number;
+  personsCreated: number;
+  personsUpdated: number;
+  rowsRead: number;
+  errors: CompanyDbSyncError[];
 }
 
 export interface PersonInput {

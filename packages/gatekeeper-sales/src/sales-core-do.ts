@@ -11,9 +11,11 @@ import { validateRpc } from "capnweb-validate";
 import { createLogger } from "@gadgets/backend-utils/logger";
 import {
   DurableObjectSqlExecutor, Repository, SalesService, buildMorningBrief, loadConfig, localDate,
-  migrate, morningBriefMessageHash, newId, nowIso, processPending, systemClock, MORNING_BRIEF_NOTIFICATION_TYPE,
+  migrate, morningBriefMessageHash, newId, nowIso, processPending, systemClock, toCsvExportUrl,
+  MORNING_BRIEF_NOTIFICATION_TYPE,
   type AccountPatch, type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog,
-  type CaptureOptions, type CaptureResult, type Commitment, type ConfigDto, type CoreContext,
+  type CaptureOptions, type CaptureResult, type Commitment, type CompanyDbSyncResult,
+  type ConfigDto, type CoreContext,
   type CustomerAccount, type CustomerDetail, type CustomerPerson, type ManagerSummary,
   type ManagerSummaryQuery,
   type NextAction, type NextActionFilter, type NextActionInput, type NextActionPatch,
@@ -252,6 +254,28 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
 
   async createPerson(caller: Caller, accountId: string, input: PersonInput): Promise<CustomerPerson> {
     return this.#service.createPerson(this.#actor(caller), accountId, input);
+  }
+
+  /**
+   * 企業DB連携: fetches the configured Google Sheets URL (converted to its CSV export URL) and
+   * imports it. The fetch itself happens here (the Worker boundary), not in sales-core, which has
+   * no outbound-HTTP dependency of its own -- same split as the LLM call going through ctx.llm.
+   */
+  async syncCompanyDb(caller: Caller): Promise<CompanyDbSyncResult> {
+    const actor = this.#actor(caller);
+    const config = await this.#service.getConfig(actor);
+    if (!config.companyDbSheetUrl) throw new Error("企業DB連携の URL が設定されていません（設定画面で入力してください）");
+    const exportUrl = toCsvExportUrl(config.companyDbSheetUrl);
+    const res = await fetch(exportUrl);
+    if (!res.ok) {
+      throw new Error(
+        res.status === 401 || res.status === 403
+          ? "スプレッドシートを取得できません。「リンクを知っている全員が閲覧者」に共有設定を変更してください。"
+          : `スプレッドシートの取得に失敗しました (status ${res.status})`,
+      );
+    }
+    const csvText = await res.text();
+    return this.#service.importCompanyDb(actor, csvText);
   }
 
   async updatePerson(caller: Caller, personId: string, patch: PersonPatch): Promise<CustomerPerson> {

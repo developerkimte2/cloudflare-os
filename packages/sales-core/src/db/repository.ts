@@ -84,6 +84,10 @@ export class Repository {
     return T.customerAccounts.select(this.db, "WHERE primary_domain = ?", domain.toLowerCase())[0];
   }
 
+  findAccountByCorporateNumber(corporateNumber: string): CustomerAccount | undefined {
+    return T.customerAccounts.select(this.db, "WHERE corporate_number = ?", corporateNumber)[0];
+  }
+
   insertAccount(account: CustomerAccount): void {
     T.customerAccounts.insert(this.db, {
       ...account, normalizedName: account.normalizedName ?? normalizeName(account.displayName),

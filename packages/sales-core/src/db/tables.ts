@@ -19,7 +19,8 @@ export const externalIdentities = new Table<ExternalIdentity>("external_identiti
 export const customerAccounts = new Table<CustomerAccount>("customer_accounts", "id", [
   col("id", "id"), col("display_name", "displayName"), col("normalized_name", "normalizedName"),
   col("primary_domain", "primaryDomain"), col("address", "address"), col("phone", "phone"),
-  col("website_url", "websiteUrl"), col("external_provider", "externalProvider"),
+  col("website_url", "websiteUrl"), col("corporate_number", "corporateNumber"), col("industry", "industry"),
+  col("external_provider", "externalProvider"),
   col("external_account_id", "externalAccountId"), col("resolution_status", "resolutionStatus"),
   col("created_at", "createdAt"), col("updated_at", "updatedAt"),
 ]);
