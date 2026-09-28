@@ -15,6 +15,23 @@ import { LIFECYCLE_LABEL } from "../labels";
 type LifecycleState = NonNullable<OpportunityFilter["lifecycleStates"]>[number];
 const LIFECYCLE_STATES: LifecycleState[] = ["OPEN", "WON", "LOST", "ON_HOLD", "CLOSED"];
 
+type SortKey = "account" | "title" | "owner" | "dueAt" | "lastActivity" | "risk" | "amount" | "aiUpdated";
+type Sort = { key: SortKey; dir: 1 | -1 };
+
+const RISK_ORDER: Record<string, number> = { NONE: 0, LOW: 1, MEDIUM: 2, HIGH: 3 };
+
+/** Value each sortable column ranks by. null/undefined always sorts to the bottom, in either direction. */
+const SORT_VALUE: Record<SortKey, (o: OpportunitySummary) => string | number | null> = {
+  account: (o) => o.accountName,
+  title: (o) => o.title,
+  owner: (o) => o.ownerName,
+  dueAt: (o) => o.nextAction?.dueAt ?? null,
+  lastActivity: (o) => o.lastMeaningfulActivityAt ?? null,
+  risk: (o) => RISK_ORDER[o.riskLevel] ?? 0,
+  amount: (o) => o.expectedAmount ?? null,
+  aiUpdated: (o) => o.lastContextRecomputedAt ?? null,
+};
+
 export default function OpportunitiesPage({
   api,
   user,
@@ -33,6 +50,14 @@ export default function OpportunitiesPage({
   const [stalledOnly, setStalledOnly] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<Sort | null>(null);
+  const toggleSort = (key: SortKey) => {
+    setSort((current) => {
+      if (!current || current.key !== key) return { key, dir: 1 };
+      if (current.dir === 1) return { key, dir: -1 };
+      return null;
+    });
+  };
 
   // Search runs server-side (the list is capped), so wait for a pause in typing before querying.
   useEffect(() => {
@@ -58,6 +83,21 @@ export default function OpportunitiesPage({
     () => api.listOpportunities(filter),
     [api, filter.lifecycleStates?.[0], filter.ownerUserId, filter.stalledDays, filter.query],
   );
+
+  const sortedData = useMemo(() => {
+    if (!data || !sort) return data;
+    const value = SORT_VALUE[sort.key];
+    return [...data].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return typeof av === "string" && typeof bv === "string"
+        ? av.localeCompare(bv, "ja") * sort.dir
+        : ((av as number) - (bv as number)) * sort.dir;
+    });
+  }, [data, sort]);
 
   return (
     <div className="px-6 py-8">
@@ -130,29 +170,29 @@ export default function OpportunitiesPage({
               再試行
             </button>
           </div>
-        ) : !data || data.length === 0 ? (
+        ) : !sortedData || sortedData.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-kumo-subtle">該当する案件がありません。</p>
         ) : (
           <table className="w-full min-w-[1120px] text-sm">
             <thead>
               <tr className="border-b border-kumo-line bg-kumo-elevated text-left text-xs text-kumo-subtle">
-                <Th>顧客</Th>
-                <Th>案件</Th>
-                <Th>担当</Th>
+                <Th sortKey="account" sort={sort} onSort={toggleSort}>顧客</Th>
+                <Th sortKey="title" sort={sort} onSort={toggleSort}>案件</Th>
+                <Th sortKey="owner" sort={sort} onSort={toggleSort}>担当</Th>
                 <Th>顧客窓口</Th>
                 <Th>現在状況</Th>
                 <Th>状態</Th>
                 <Th>次アクション</Th>
                 <Th>資料</Th>
-                <Th>期限</Th>
-                <Th>最終活動</Th>
-                <Th>リスク</Th>
-                <Th align="right">見込金額</Th>
-                <Th>AI更新</Th>
+                <Th sortKey="dueAt" sort={sort} onSort={toggleSort}>期限</Th>
+                <Th sortKey="lastActivity" sort={sort} onSort={toggleSort}>最終活動</Th>
+                <Th sortKey="risk" sort={sort} onSort={toggleSort}>リスク</Th>
+                <Th align="right" sortKey="amount" sort={sort} onSort={toggleSort}>見込金額</Th>
+                <Th sortKey="aiUpdated" sort={sort} onSort={toggleSort}>AI更新</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-kumo-line">
-              {data.map((opportunity) => (
+              {sortedData.map((opportunity) => (
                 <tr
                   key={opportunity.id}
                   onClick={() => onOpenOpportunity(opportunity.id)}
@@ -225,9 +265,37 @@ export default function OpportunitiesPage({
   );
 }
 
-function Th({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" }) {
+function Th({
+  children,
+  align = "left",
+  sortKey,
+  sort,
+  onSort,
+}: {
+  children: React.ReactNode;
+  align?: "left" | "right";
+  sortKey?: SortKey;
+  sort?: Sort | null;
+  onSort?: (key: SortKey) => void;
+}) {
+  if (!sortKey || !onSort) {
+    return <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>{children}</th>;
+  }
+  const active = sort?.key === sortKey;
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>{children}</th>
+    // The whole cell is the click target (not just the label) -- a small inline button here would
+    // leave most of the header's padded area dead to clicks, which reads as "sorting doesn't work".
+    <th
+      onClick={() => onSort(sortKey)}
+      className={`cursor-pointer select-none px-3 py-2 font-medium hover:bg-kumo-tint hover:text-kumo-default ${
+        align === "right" ? "text-right" : "text-left"
+      } ${active ? "text-kumo-default" : ""}`}
+    >
+      <span className={`inline-flex items-center gap-0.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        {children}
+        <span className="w-2.5 text-[10px]">{active ? (sort!.dir === 1 ? "▲" : "▼") : ""}</span>
+      </span>
+    </th>
   );
 }
 

@@ -155,9 +155,33 @@ export default function TodayPage({
         />
       </div>
 
+      <NextStepBanner
+        reviewCount={data.reviews.length}
+        first={data.now[0] ?? data.upcoming[0]}
+        onOpenOpportunity={onOpenOpportunity}
+      />
+
+      {data.reviews.length > 0 && (
+        <Section id="today-reviews" title={`確認してください (${data.reviews.length})`} action={<AiAttribution ai={ai} />}>
+          <div className="space-y-2">
+            {data.reviews.map((review) => (
+              <ReviewCard
+                key={review.id}
+                review={review}
+                timezone={timezone}
+                onResolve={(optionId, input) => resolveReview(review.id, optionId, input)}
+                onDismiss={() => dismissReview(review.id)}
+                onOpenOpportunity={review.opportunityId ? () => onOpenOpportunity(review.opportunityId!) : undefined}
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+
       <TodayActionSection
         title="今やる"
         actions={data.now}
+        collapseAfter={5}
         timezone={timezone}
         now={now}
         onOpenOpportunity={onOpenOpportunity}
@@ -179,23 +203,6 @@ export default function TodayPage({
         onOpenOpportunity={onOpenOpportunity}
         onUpdate={updateNextAction}
       />
-
-      {data.reviews.length > 0 && (
-        <Section title={`確認してください (${data.reviews.length})`} action={<AiAttribution ai={ai} />}>
-          <div className="space-y-2">
-            {data.reviews.map((review) => (
-              <ReviewCard
-                key={review.id}
-                review={review}
-                timezone={timezone}
-                onResolve={(optionId, input) => resolveReview(review.id, optionId, input)}
-                onDismiss={() => dismissReview(review.id)}
-                onOpenOpportunity={review.opportunityId ? () => onOpenOpportunity(review.opportunityId!) : undefined}
-              />
-            ))}
-          </div>
-        </Section>
-      )}
 
       {data.attention.length > 0 && (
         <Section title="注意">
@@ -279,6 +286,7 @@ export default function TodayPage({
 function TodayActionSection({
   title,
   actions,
+  collapseAfter,
   timezone,
   now,
   onOpenOpportunity,
@@ -286,16 +294,20 @@ function TodayActionSection({
 }: {
   title: string;
   actions: TodayAction[];
+  /** Show only this many rows until the user asks for the rest (long overdue backlogs). */
+  collapseAfter?: number;
   timezone: string;
   now: Date;
   onOpenOpportunity: (id: string) => void;
   onUpdate: (id: string, patch: NextActionPatch) => void | Promise<void>;
 }) {
+  const [expanded, setExpanded] = useState(false);
   if (actions.length === 0) return null;
+  const shown = collapseAfter && !expanded ? actions.slice(0, collapseAfter) : actions;
   return (
     <Section title={`${title} (${actions.length})`}>
       <div className="divide-y divide-kumo-line">
-        {actions.map((item) => (
+        {shown.map((item) => (
           <NextActionRow
             key={item.action.id}
             action={item.action}
@@ -308,19 +320,67 @@ function TodayActionSection({
           />
         ))}
       </div>
+      {shown.length < actions.length && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="press mt-2 rounded-lg border border-kumo-line px-3 py-1.5 text-xs text-kumo-subtle hover:bg-kumo-tint"
+        >
+          残り {actions.length - shown.length} 件を表示
+        </button>
+      )}
     </Section>
   );
 }
 
-function Section({
-  title, action, children,
+/** One prominent answer to "what should I do first?": pending reviews block the AI, so they win. */
+function NextStepBanner({
+  reviewCount,
+  first,
+  onOpenOpportunity,
 }: {
+  reviewCount: number;
+  first: TodayAction | undefined;
+  onOpenOpportunity: (id: string) => void;
+}) {
+  let label: string;
+  let hint: string;
+  let onClick: () => void;
+  if (reviewCount > 0) {
+    label = `まず確認：AI の判断待ちが ${reviewCount} 件あります`;
+    hint = "回答すると、案件や次アクションに反映されます";
+    onClick = () => document.getElementById("today-reviews")?.scrollIntoView({ behavior: "smooth" });
+  } else if (first) {
+    label = `次の一手：${first.action.title}`;
+    hint = `${first.opportunity.accountName} / ${first.opportunity.title}`;
+    onClick = () => onOpenOpportunity(first.opportunity.id);
+  } else {
+    label = "今日のタスクはありません";
+    hint = "営業メモや日報を取り込むと、次アクションが作られます";
+    onClick = () => {};
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="press mt-6 block w-full rounded-xl border border-kumo-line bg-kumo-tint px-4 py-3 text-left hover:bg-kumo-line"
+    >
+      <span className="block text-base font-semibold text-kumo-default">{label}</span>
+      <span className="mt-0.5 block text-sm text-kumo-subtle">{hint}</span>
+    </button>
+  );
+}
+
+function Section({
+  id, title, action, children,
+}: {
+  id?: string;
   title: string;
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-7">
+    <section id={id} className="mt-7">
       <div className="mb-2 flex items-center justify-between gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-kumo-inactive">{title}</h2>
         {action}

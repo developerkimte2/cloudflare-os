@@ -252,6 +252,14 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
     return this.#service.updateAccount(this.#actor(caller), accountId, patch);
   }
 
+  async mergeAccounts(caller: Caller, sourceId: string, targetId: string): Promise<CustomerAccount> {
+    return this.#service.mergeAccounts(this.#actor(caller), sourceId, targetId);
+  }
+
+  async findDuplicateAccountGroups(caller: Caller): Promise<{ normalizedName: string; accounts: CustomerAccount[] }[]> {
+    return this.#service.findDuplicateAccountGroups(this.#actor(caller));
+  }
+
   async createPerson(caller: Caller, accountId: string, input: PersonInput): Promise<CustomerPerson> {
     return this.#service.createPerson(this.#actor(caller), accountId, input);
   }

@@ -85,6 +85,13 @@ export interface SalesManagementApi {
 
   /** Company address / phone / URL. Shared by every opportunity of that customer. */
   updateAccount(accountId: string, patch: AccountPatch): Promise<CustomerAccount>;
+  /**
+   * Manual dedup for customer accounts (表記ゆれ, or a second record from 企業DB連携): folds
+   * `sourceId`'s persons/opportunities/activities into `targetId` and deletes `sourceId`. ADMIN only.
+   */
+  mergeAccounts(sourceId: string, targetId: string): Promise<CustomerAccount>;
+  /** Accounts that likely refer to the same company (same normalized name). ADMIN only. */
+  findDuplicateAccountGroups(): Promise<{ normalizedName: string; accounts: CustomerAccount[] }[]>;
   /** Adds a customer-side contact (担当者) with their title, email and phone. */
   createPerson(accountId: string, input: PersonInput): Promise<CustomerPerson>;
   updatePerson(personId: string, patch: PersonPatch): Promise<CustomerPerson>;

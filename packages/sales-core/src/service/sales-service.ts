@@ -612,6 +612,69 @@ export class SalesService {
   }
 
   /**
+   * Groups every account by a freshly recomputed normalizeName(displayName) (never the possibly
+   * stale stored column) and returns only groups with more than one account, oldest first within
+   * each group -- the likely merge target, since it is the one other records tend to reference.
+   * Surfaces exactly the failure mode 企業DB連携 can hit: two accounts for the same company under
+   * slightly different spellings or suffixes.
+   */
+  findDuplicateAccountGroups(actor: Actor): { normalizedName: string; accounts: CustomerAccount[] }[] {
+    const user = this.requireUser(actor);
+    if (user.role !== "ADMIN") throw new AuthorizationError("重複顧客の一覧は管理者のみ参照できます");
+    const groups = new Map<string, CustomerAccount[]>();
+    for (const account of this.repo.listAccounts(5000)) {
+      const key = normalizeName(account.displayName);
+      if (!key) continue;
+      const group = groups.get(key);
+      if (group) group.push(account); else groups.set(key, [account]);
+    }
+    return [...groups.entries()]
+      .filter(([, accounts]) => accounts.length > 1)
+      .map(([normalizedName, accounts]) => ({
+        normalizedName,
+        accounts: accounts.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+      }))
+      .sort((a, b) => a.normalizedName.localeCompare(b.normalizedName, "ja"));
+  }
+
+  /**
+   * Manual dedup for customer accounts (表記ゆれ, or two records created for the same company --
+   * e.g. by 企業DB連携 matching on a stale normalized name). Folds `sourceId`'s persons,
+   * opportunities and activities into `targetId` (repo.reassignAccount), backfills any company-DB
+   * fields `target` is missing from `source`, and deletes `source`. Unlike mergeOpportunities there
+   * is no separate deal history worth preserving on the source account itself, so it is removed
+   * outright rather than kept around closed.
+   */
+  mergeAccounts(actor: Actor, sourceId: string, targetId: string): CustomerAccount {
+    const user = this.requireUser(actor);
+    if (user.role !== "ADMIN") throw new AuthorizationError("顧客の統合は管理者のみ実行できます");
+    if (sourceId === targetId) throw new TypeError("同じ顧客は統合できません");
+    const source = this.repo.getAccount(sourceId);
+    const target = this.repo.getAccount(targetId);
+    if (!source) throw new NotFoundError("統合元の顧客");
+    if (!target) throw new NotFoundError("統合先の顧客");
+    const now = nowIso(this.ctx.clock);
+    return this.repo.transaction(() => {
+      this.repo.reassignAccount(sourceId, targetId);
+      const merged: CustomerAccount = {
+        ...target,
+        address: target.address ?? source.address,
+        phone: target.phone ?? source.phone,
+        websiteUrl: target.websiteUrl ?? source.websiteUrl,
+        corporateNumber: target.corporateNumber ?? source.corporateNumber,
+        industry: target.industry ?? source.industry,
+        updatedAt: now,
+      };
+      this.repo.updateAccount(merged);
+      this.repo.deleteAccount(sourceId);
+      audit(this.ctx, { actorType: "USER", actorId: user.id, action: "CUSTOMER_MERGED",
+        entityType: "customer_account", entityId: targetId,
+        before: { sourceId, sourceDisplayName: source.displayName }, after: merged });
+      return merged;
+    });
+  }
+
+  /**
    * 企業DB連携: imports/updates customer_accounts and customer_persons from a company-DB CSV
    * (Sansan-style export: see SalesConfig.companyDbSheetUrl's column list). Matches accounts by
    * 法人番号 first (precise), falling back to normalized company name; matches persons by email.
@@ -640,7 +703,7 @@ export class SalesService {
           const corporateNumber = cleanText(r["法人番号"]);
 
           let account = corporateNumber ? this.repo.findAccountByCorporateNumber(corporateNumber) : undefined;
-          if (!account) account = this.repo.findAccountsByNormalizedName(normalizeName(companyName))[0];
+          if (!account) account = this.repo.findAccountsByComputedName(companyName)[0];
 
           if (account) {
             const next: CustomerAccount = {
@@ -1026,6 +1089,9 @@ export class SalesService {
         case "MEMO_TARGET":
           reprocessSourceId = this.resolveMemoTarget(user, review, value, now);
           break;
+        case "PERSON_AMBIGUOUS":
+          this.resolvePerson(user, review, value, now);
+          break;
         case "STATE_AMBIGUOUS":
           if (typeof value.lifecycleState === "string") {
             const today = localDate(now, user.timezone || this.config.defaultTimezone);
@@ -1305,7 +1371,11 @@ export class SalesService {
     else if (r.relatedEntityType === "customer_account" && r.relatedEntityId) {
       relatedTitle = this.repo.getAccount(r.relatedEntityId)?.displayName;
     }
-    return { ...r, relatedTitle, opportunityId };
+    const sources = r.sourceEvidenceIds
+      .map(id => this.repo.getSource(id))
+      .filter((s): s is SourceDocument => s !== undefined)
+      .map(s => ({ id: s.id, sourceType: s.sourceType, rawText: s.rawText, occurredAt: s.occurredAt }));
+    return { ...r, relatedTitle, opportunityId, sources };
   }
 
   private refreshNextActionPointer(opportunityId: string): void {
@@ -1418,6 +1488,29 @@ export class SalesService {
         entityType: "customer_account", entityId: placeholder.id, before: placeholder, after: promoted });
     }
     // value.none: leave the placeholder as UNRESOLVED.
+  }
+
+  /**
+   * PERSON_AMBIGUOUS: `value.personId` confirms an existing contact was the one meant (nothing to
+   * write — the account already has that record); `value.newPerson` creates one from the mention's
+   * own name/title/email/phone; `value.none` leaves it unlinked.
+   */
+  private resolvePerson(user: User, review: ReviewItem, value: Record<string, JsonValue>, now: string): void {
+    if (value.newPerson !== true) return;
+    const accountId = review.relatedEntityId!;
+    if (!this.repo.getAccount(accountId)) return;
+    const name = typeof value.name === "string" ? value.name.trim() : "";
+    if (!name) return;
+    const person: CustomerPerson = {
+      id: newId(), accountId, displayName: name, normalizedName: normalizeName(name),
+      title: typeof value.title === "string" ? value.title : undefined,
+      email: typeof value.email === "string" ? normalizeEmail(value.email) : undefined,
+      phone: typeof value.phone === "string" ? value.phone : undefined,
+      resolutionStatus: "MANUAL", createdAt: now, updatedAt: now,
+    };
+    this.repo.insertPerson(person);
+    audit(this.ctx, { actorType: "USER", actorId: user.id, action: "PERSON_CREATED",
+      entityType: "customer_person", entityId: person.id, after: person, sourceIds: review.sourceEvidenceIds });
   }
 
   /** OPPORTUNITY_AMBIGUOUS: fold the freshly created opportunity into the chosen one. */

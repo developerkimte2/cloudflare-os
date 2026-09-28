@@ -367,6 +367,9 @@ export type ReviewItemType =
   | "HIGH_RISK_ACTION"
   /** A person was mentioned but no company at all — "which deal is this?" instead of guessing. */
   | "MEMO_TARGET"
+  /** A person was mentioned but too weakly to auto-create (no real name, or low confidence) —
+   * "is this an existing contact, or a new one?" instead of guessing or silently dropping it. */
+  | "PERSON_AMBIGUOUS"
   | "OTHER";
 
 export type ReviewStatus = "OPEN" | "RESOLVED" | "DISMISSED";

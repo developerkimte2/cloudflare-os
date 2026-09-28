@@ -1,8 +1,9 @@
 import { useKumoToastManager } from "@cloudflare/kumo";
 import type { RpcStub } from "capnweb";
 import { useEffect, useState } from "react";
-import type { CompanyDbSyncResult, ConfigDto, SalesManagementApi } from "../../src/management-types";
+import type { CompanyDbSyncResult, ConfigDto, CustomerAccount, SalesManagementApi } from "../../src/management-types";
 import { errorMessage, useApiAction, useAsyncData } from "../api";
+import { ConfirmInline } from "../components/ConfirmInline";
 import { ProductTable } from "../components/ProductTable";
 
 /** Percentage-displayed confidence thresholds (設計書 §16). Stored as 0..1 fractions. */
@@ -406,6 +407,12 @@ export default function SettingsPage({
         </Section>
       )}
 
+      {canAdminister && (
+        <Section title="重複顧客の統合">
+          <DuplicateAccountsSection api={api} />
+        </Section>
+      )}
+
       <div className="mt-6 flex justify-end">
         <button
           type="button"
@@ -462,6 +469,79 @@ function ConfidenceField({
         className="mt-1.5 w-full"
       />
       <p className="mt-0.5 text-[11px] text-kumo-inactive">{hint}</p>
+    </div>
+  );
+}
+
+/**
+ * Same normalized name (法人格 stripped, whitespace/case folded) across two or more accounts --
+ * either a genuine 表記ゆれ, or a second record 企業DB連携 created because the stored
+ * normalized_name of the original had drifted. Each group merges everything into its oldest
+ * account (the one other data is most likely to already reference).
+ */
+function DuplicateAccountsSection({ api }: { api: RpcStub<SalesManagementApi> }) {
+  const toasts = useKumoToastManager();
+  const { loading, error, data: groups, reload } = useAsyncData<{ normalizedName: string; accounts: CustomerAccount[] }[]>(
+    () => api.findDuplicateAccountGroups(),
+    [api],
+  );
+  const [mergingKey, setMergingKey] = useState<string>();
+
+  const mergeGroup = async (normalizedName: string, accounts: CustomerAccount[]) => {
+    setMergingKey(normalizedName);
+    const [target, ...sources] = accounts;
+    if (!target) return;
+    try {
+      for (const source of sources) {
+        await api.mergeAccounts(source.id, target.id);
+      }
+      toasts.add({
+        title: "統合しました",
+        description: `「${target.displayName}」に ${sources.length} 件を統合しました。`,
+        variant: "success",
+      });
+      reload();
+    } catch (caught) {
+      toasts.add({ title: "統合に失敗しました", description: errorMessage(caught), variant: "error" });
+    } finally {
+      setMergingKey(undefined);
+    }
+  };
+
+  if (loading) return <p className="text-sm text-kumo-subtle">確認中…</p>;
+  if (error) return <p className="text-sm text-kumo-danger">{error}</p>;
+  if (!groups || groups.length === 0) {
+    return <p className="text-sm text-kumo-subtle">重複は見つかりませんでした。</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-kumo-subtle">
+        表記ゆれなどで同じ会社が複数登録されている可能性がある組み合わせです。統合すると、担当者・案件・活動はすべて
+        （作成日が一番古い）1件にまとまり、残りは削除されます。取り消せません。
+      </p>
+      {groups.map(({ normalizedName, accounts }) => (
+        <div key={normalizedName} className="rounded-lg border border-kumo-line bg-kumo-base p-3">
+          <ul className="space-y-0.5 text-sm text-kumo-default">
+            {accounts.map((a, i) => (
+              <li key={a.id}>
+                {a.displayName}
+                {i === 0 && <span className="ml-1.5 text-[11px] text-kumo-inactive">（統合先）</span>}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex justify-end">
+            <ConfirmInline
+              label="統合する"
+              confirmText={`「${accounts[0]!.displayName}」に他 ${accounts.length - 1} 件を統合しますか？取り消せません。`}
+              confirmLabel="統合して削除"
+              tone="danger"
+              disabled={mergingKey === normalizedName}
+              onConfirm={() => void mergeGroup(normalizedName, accounts)}
+            />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

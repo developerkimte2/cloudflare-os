@@ -151,7 +151,9 @@ export interface ReviewItem {
     | "CUSTOMER_AMBIGUOUS" | "OPPORTUNITY_AMBIGUOUS" | "DATE_AMBIGUOUS" | "AMOUNT_AMBIGUOUS"
     | "STATE_AMBIGUOUS" | "HIGH_RISK_ACTION"
     /** A person was mentioned but no company at all — pick which deal this memo belongs to. */
-    | "MEMO_TARGET" | "OTHER";
+    | "MEMO_TARGET"
+    /** A person was mentioned but too weakly to auto-link — pick an existing contact or create one. */
+    | "PERSON_AMBIGUOUS" | "OTHER";
   question: string;
   optionsJson?: { id: string; label: string; value?: unknown }[];
   /** Title of the opportunity or customer the question is about. */

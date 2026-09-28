@@ -79,6 +79,7 @@ export default function OpportunityDetailPage({
     [api, opportunityId],
   );
   const { data: users } = useAsyncData<UserDto[]>(() => api.listUsers().catch(() => [] as UserDto[]), [api]);
+  const { data: config } = useAsyncData(() => api.getConfig().catch(() => undefined), [api]);
   const [recomputing, setRecomputing] = useState(false);
 
   if (loading && !data) {
@@ -199,6 +200,7 @@ export default function OpportunityDetailPage({
       <OpportunityHeader
         opportunity={data}
         users={users ?? []}
+        phaseLabels={config?.phaseLabels ?? []}
         timezone={timezone}
         onSave={savePatch}
         onOpenCustomer={onOpenCustomer}
@@ -225,6 +227,13 @@ export default function OpportunityDetailPage({
           <AccountSummaryCard summary={data.accountSummary} onOpenCustomer={() => onOpenCustomer(data.accountId)} />
         </div>
       </Section>
+
+      <ActivityTimeline
+        activities={data.activities}
+        sources={data.sources}
+        timezone={timezone}
+        onRevertCapture={revertCapture}
+      />
 
       <Section title="対象の確定（表記ゆれ・誤判定の修正）">
         <MergeOpportunitySection api={api} opportunity={data} onMerge={mergeInto} />
@@ -288,13 +297,6 @@ export default function OpportunityDetailPage({
         </Section>
       )}
 
-      <ActivityTimeline
-        activities={data.activities}
-        sources={data.sources}
-        timezone={timezone}
-        onRevertCapture={revertCapture}
-      />
-
       <DecisionHistory decisions={data.decisions} timezone={timezone} />
 
       <AuditSection audit={data.audit} timezone={timezone} />
@@ -329,12 +331,14 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 function OpportunityHeader({
   opportunity,
   users,
+  phaseLabels,
   timezone,
   onSave,
   onOpenCustomer,
 }: {
   opportunity: OpportunityDetail;
   users: UserDto[];
+  phaseLabels: string[];
   timezone: string;
   onOpenCustomer: (accountId: string) => void;
   onSave: (patch: OpportunityPatch) => void | Promise<void>;
@@ -446,10 +450,18 @@ function OpportunityHeader({
   const closingOut =
     lifecycleState !== opportunity.lifecycleState && (lifecycleState === "WON" || lifecycleState === "LOST");
   const alreadyClosed = !closingOut && isClosedState(opportunity.lifecycleState);
+  const contacts = opportunity.persons.filter((p) => opportunity.contactPersonIds.includes(p.id));
 
   return (
     <header className="rounded-xl border border-kumo-line bg-kumo-control p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <button
+        type="button"
+        onClick={() => onOpenCustomer(opportunity.accountId)}
+        className="text-sm text-kumo-link hover:underline"
+      >
+        {opportunity.accountName}
+      </button>
+      <div className="mt-0.5 flex flex-wrap items-start justify-between gap-3">
         <input
           value={title}
           onChange={(event) => setTitle(event.currentTarget.value)}
@@ -470,13 +482,6 @@ function OpportunityHeader({
           </button>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={() => onOpenCustomer(opportunity.accountId)}
-        className="mt-0.5 text-sm text-kumo-link hover:underline"
-      >
-        {opportunity.accountName}
-      </button>
 
       {alreadyClosed && (
         <p className="mt-1 text-xs font-medium text-kumo-default">
@@ -486,13 +491,30 @@ function OpportunityHeader({
         </p>
       )}
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="フェーズ">
-          <input
-            value={phaseLabel}
-            onChange={(event) => setPhaseLabel(event.currentTarget.value)}
-            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
-          />
+          {phaseLabels.length > 0 ? (
+            <select
+              value={phaseLabel}
+              onChange={(event) => setPhaseLabel(event.currentTarget.value)}
+              className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+            >
+              <option value="">（未設定）</option>
+              {/* A phase saved before it was removed from settings, or typed in before this became a dropdown -- kept selectable so saving doesn't silently wipe it. */}
+              {phaseLabel && !phaseLabels.includes(phaseLabel) && <option value={phaseLabel}>{phaseLabel}</option>}
+              {phaseLabels.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={phaseLabel}
+              onChange={(event) => setPhaseLabel(event.currentTarget.value)}
+              className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+            />
+          )}
         </Field>
         <Field label={opportunity.hasLineItems ? "見込金額（明細合計から自動計算）" : "見込金額"}>
           <input
@@ -513,20 +535,7 @@ function OpportunityHeader({
             className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
           />
         </Field>
-        <Field label="状態">
-          <select
-            value={lifecycleState}
-            onChange={(event) => setLifecycleState(event.currentTarget.value as LifecycleState)}
-            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
-          >
-            {LIFECYCLE_STATES.map((state) => (
-              <option key={state} value={state}>
-                {LIFECYCLE_LABEL[state]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="担当">
+        <Field label="弊社担当">
           <select
             value={ownerUserId}
             onChange={(event) => setOwnerUserId(event.currentTarget.value)}
@@ -540,6 +549,44 @@ function OpportunityHeader({
             ))}
           </select>
         </Field>
+        <Field label="状態">
+          <select
+            value={lifecycleState}
+            onChange={(event) => setLifecycleState(event.currentTarget.value as LifecycleState)}
+            className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+          >
+            {LIFECYCLE_STATES.map((state) => (
+              <option key={state} value={state}>
+                {LIFECYCLE_LABEL[state]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {contacts.length > 0 ? (
+          contacts.map((contact, index) => (
+            <Field key={contact.id} label={contacts.length > 1 ? `顧客担当${index + 1}` : "顧客担当"}>
+              <div className="flex h-8 flex-col justify-center overflow-hidden">
+                <p className="truncate text-sm text-kumo-default" title={contact.displayName}>
+                  {contact.displayName}
+                </p>
+                {(contact.phone || contact.email) && (
+                  <p
+                    className="truncate text-xs text-kumo-subtle"
+                    title={[contact.phone, contact.email].filter(Boolean).join(" / ")}
+                  >
+                    {[contact.phone, contact.email].filter(Boolean).join(" / ")}
+                  </p>
+                )}
+              </div>
+            </Field>
+          ))
+        ) : (
+          <Field label="顧客担当">
+            <p className="flex h-8 items-center text-xs text-kumo-subtle">
+              未指定（下の「顧客情報」で選べます）
+            </p>
+          </Field>
+        )}
         <Field label="提案資料URL">
           <input
             type="url"
@@ -581,14 +628,6 @@ function OpportunityHeader({
           </>
         )}
       </div>
-      <p className="mt-3 text-xs text-kumo-subtle">
-        顧客窓口:{" "}
-        {opportunity.contactNames.length > 0 ? (
-          <span className="text-kumo-default">{opportunity.contactNames.join("、")}</span>
-        ) : (
-          "未指定（下の「顧客情報」で窓口を選べます）"
-        )}
-      </p>
 
       <div className="mt-4 flex justify-end">
         {closingOut ? (
@@ -1257,7 +1296,12 @@ function ActivityTimeline({
                   {showSource.has(activity.id) && (
                     <div className="mt-1.5 rounded-lg bg-kumo-elevated p-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <ProcessingStatusBadge status={source.processingStatus} />
+                        <div className="flex items-center gap-2">
+                          <ProcessingStatusBadge status={source.processingStatus} />
+                          <span className="text-xs text-kumo-inactive">
+                            {formatDateTime(source.receivedAt, timezone)}
+                          </span>
+                        </div>
                         {source.processingStatus !== "REVERTED" && (
                           <ConfirmInline
                             label="取り消す"

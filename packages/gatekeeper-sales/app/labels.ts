@@ -126,6 +126,7 @@ export const REVIEW_TYPE_LABEL: Record<ReviewItemType, string> = {
   STATE_AMBIGUOUS: "状態の確認",
   HIGH_RISK_ACTION: "重要な確認",
   MEMO_TARGET: "宛先の確認",
+  PERSON_AMBIGUOUS: "担当者の確認",
   OTHER: "その他の確認",
 };
 

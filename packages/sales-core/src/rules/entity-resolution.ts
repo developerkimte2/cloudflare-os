@@ -63,6 +63,28 @@ export function looksLikeCompanyName(name: string, personNames: string[]): boole
   return !personNames.some(p => normalizeName(p) === normalized);
 }
 
+// Job-title/role words and common department names the extractor echoes back verbatim when the
+// text names a role but not the person holding it ("経営企画部長", "導入担当", "担当役員"). Stripped
+// left-to-right, repeatedly, from the candidate string; if nothing is left over, it was built
+// entirely out of these and names no one in particular.
+const ROLE_OR_DEPARTMENT_TOKEN = new RegExp(
+  "(社長|会長|専務|常務|取締役|部長|次長|課長|係長|主任|マネージャー|マネジャー|リーダー|役員|" +
+  "責任者|窓口|担当者?|導入|経営企画|情報システム|営業|技術|総務|経理|人事|購買|製造|品質|開発|" +
+  "企画|管理|広報|法務)", "g",
+);
+
+/**
+ * True when `name` plausibly names a specific person, not just a job title or department ("導入担当",
+ * "担当役員", "経営企画部長") the extractor mentioned because the text described someone's role without
+ * ever giving their name. Such a "name" is not safe to auto-create a contact from, nor to offer as a
+ * one-click "register as new" choice — see PERSON_AMBIGUOUS in ingest.ts.
+ */
+export function looksLikePersonName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  return trimmed.replace(ROLE_OR_DEPARTMENT_TOKEN, "").trim().length > 0;
+}
+
 /**
  * An UNRESOLVED account is itself an unconfirmed AI guess (設計書 §13.4) — often the placeholder's
  * own name is bogus (a hallucinated company name, or the AI echoing back a "company unknown"

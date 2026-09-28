@@ -168,6 +168,89 @@ describe("customer / opportunity resolution scenarios", () => {
     expect(result.opportunity?.contactNames).toEqual(["田中"]);
   });
 
+  // 2026-09-28: a role-only mention ("経営企画部長", no real name) was silently dropped instead of
+  // asking who it was, even though the account already has contacts it could plausibly be.
+  it("PERSON_AMBIGUOUS: a role-only/low-confidence person mention asks instead of being dropped", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      accounts: [{ name: "さくらテック", confidence: 0.9 }],
+      persons: [
+        { name: "田中", confidence: 0.9 },
+        { name: "経営企画部長", confidence: 0.3 },
+      ],
+      opportunity: { match: "NEW", confidence: 0.9 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const account = makeAccount(svc.repo, { displayName: "さくらテック", resolutionStatus: "RESOLVED" });
+    svc.repo.insertPerson({
+      id: "p-tanaka", accountId: account.id, displayName: "田中", title: "情報システム部長",
+      resolutionStatus: "MANUAL", createdAt: NOW, updatedAt: NOW,
+    });
+
+    const result = await svc.capture({ userId: user.id }, "田中さん、経営企画部長も同席のキックオフMTGを実施");
+    expect(result.source.processingStatus).toBe("REVIEW_REQUIRED");
+    const review = result.reviews.find(r => r.type === "PERSON_AMBIGUOUS");
+    expect(review).toBeDefined();
+    expect(review!.question).toContain("経営企画部長");
+    // 田中 matched by name and needed no review; nothing was silently created for the other one.
+    expect(svc.repo.listPersonsForAccount(account.id)).toHaveLength(1);
+    const options = review!.optionsJson!;
+    expect(options.find(o => o.id === "person:p-tanaka")).toMatchObject({ label: "田中 (情報システム部長)" });
+    // "経営企画部長" is a role, not a name -- there is nothing to register, so no one-click "new" option.
+    expect(options.find(o => o.id === "new")).toBeUndefined();
+    expect(options.find(o => o.id === "none")).toBeDefined();
+
+    await svc.resolveReview({ userId: user.id }, review!.id, { optionId: "person:p-tanaka" });
+    expect(svc.repo.listPersonsForAccount(account.id)).toHaveLength(1);
+  });
+
+  // 2026-09-28: "導入担当" and "担当役員" (department + role, no name at all) were each auto-created
+  // verbatim as if they were a contact's actual name -- confidence alone doesn't distinguish a real
+  // name from a role/department description, so this must never auto-create regardless of confidence.
+  it("PERSON_AMBIGUOUS: pure role/department mentions are never auto-created, even at high confidence", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      accounts: [{ name: "エバーグリーン", confidence: 0.9 }],
+      persons: [
+        { name: "導入担当", confidence: 0.9 },
+        { name: "担当役員", confidence: 0.9 },
+      ],
+      opportunity: { match: "NEW", confidence: 0.9 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const account = makeAccount(svc.repo, { displayName: "エバーグリーン", resolutionStatus: "RESOLVED" });
+
+    const result = await svc.capture(
+      { userId: user.id }, "導入担当と電話。決裁者は担当役員が見るとのことで、名前までは聞けなかった。");
+    // Nothing plausible to register and no existing contacts to ask about -- silently not recorded,
+    // same as any other detail the memo didn't actually give us.
+    expect(result.reviews.some(r => r.type === "PERSON_AMBIGUOUS")).toBe(false);
+    expect(svc.repo.listPersonsForAccount(account.id)).toHaveLength(0);
+  });
+
+  it("PERSON_AMBIGUOUS: picking an existing candidate creates no new person", async () => {
+    const llm = new FakeLlmProvider([extractionJson({
+      accounts: [{ name: "さくらテック", confidence: 0.9 }],
+      persons: [
+        { name: "田中", confidence: 0.9 },
+        { name: "田中部長", confidence: 0.2 },
+      ],
+      opportunity: { match: "NEW", confidence: 0.9 },
+    })]);
+    const svc = makeService(llm, NOW);
+    const user = svc.registerIdentity("test", "u1", { email: "a@example.com", displayName: "太郎" });
+    const account = makeAccount(svc.repo, { displayName: "さくらテック", resolutionStatus: "RESOLVED" });
+    svc.repo.insertPerson({
+      id: "p-tanaka", accountId: account.id, displayName: "田中", resolutionStatus: "MANUAL",
+      createdAt: NOW, updatedAt: NOW,
+    });
+
+    const result = await svc.capture({ userId: user.id }, "田中さん、田中部長と電話で話した");
+    const review = result.reviews.find(r => r.type === "PERSON_AMBIGUOUS")!;
+    await svc.resolveReview({ userId: user.id }, review.id, { optionId: "person:p-tanaka" });
+    expect(svc.repo.listPersonsForAccount(account.id)).toHaveLength(1);
+  });
+
   it("reuses the single existing open opportunity for a resolved account", async () => {
     const llm = new FakeLlmProvider([extractionJson({
       persons: [{ name: "山田", email: "yamada@abc.co.jp", confidence: 0.9 }],

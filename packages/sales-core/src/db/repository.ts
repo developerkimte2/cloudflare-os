@@ -69,6 +69,21 @@ export class Repository {
     return T.customerAccounts.select(this.db, "WHERE normalized_name = ?", normalizeName(name));
   }
 
+  /**
+   * Like findAccountsByNormalizedName, but falls back to recomputing normalizeName(displayName) in
+   * JS for every account when the indexed lookup misses. Guards the 企業DB sync against accounts
+   * whose stored normalized_name has drifted from their displayName (e.g. rows written before
+   * normalization was applied consistently) -- without this, a sync would silently create a
+   * duplicate account instead of matching the existing one.
+   */
+  findAccountsByComputedName(name: string): CustomerAccount[] {
+    const exact = this.findAccountsByNormalizedName(name);
+    if (exact.length > 0) return exact;
+    const n = normalizeName(name);
+    if (!n) return [];
+    return this.listAccounts(5000).filter(a => normalizeName(a.displayName) === n);
+  }
+
   /** Substring candidates in either direction, for the review options list. */
   findAccountCandidates(name: string, limit = 5): CustomerAccount[] {
     const n = normalizeName(name);
@@ -89,13 +104,13 @@ export class Repository {
   }
 
   insertAccount(account: CustomerAccount): void {
-    T.customerAccounts.insert(this.db, {
-      ...account, normalizedName: account.normalizedName ?? normalizeName(account.displayName),
-    });
+    T.customerAccounts.insert(this.db, { ...account, normalizedName: normalizeName(account.displayName) });
   }
 
+  // Always recomputed (never trusts a caller-supplied normalizedName) so a stored value can't drift
+  // out of sync with displayName -- every write self-heals to the canonical form.
   updateAccount(account: CustomerAccount): void {
-    T.customerAccounts.update(this.db, account);
+    T.customerAccounts.update(this.db, { ...account, normalizedName: normalizeName(account.displayName) });
   }
 
   deleteAccount(id: string): void {
@@ -124,13 +139,17 @@ export class Repository {
   insertPerson(person: CustomerPerson): void {
     T.customerPersons.insert(this.db, {
       ...person,
-      normalizedName: person.normalizedName ?? normalizeName(person.displayName),
+      normalizedName: normalizeName(person.displayName),
       email: person.email ? normalizeEmail(person.email) : undefined,
     });
   }
 
   updatePerson(person: CustomerPerson): void {
-    T.customerPersons.update(this.db, person);
+    T.customerPersons.update(this.db, {
+      ...person,
+      normalizedName: normalizeName(person.displayName),
+      email: person.email ? normalizeEmail(person.email) : undefined,
+    });
   }
 
   deletePerson(id: string): void {

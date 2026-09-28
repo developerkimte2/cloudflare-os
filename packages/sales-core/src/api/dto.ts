@@ -320,9 +320,18 @@ export interface NextActionInput {
   assignedUserId?: string;
 }
 
+/** The source text a review's `sourceEvidenceIds` point at, for display alongside the question. */
+export interface ReviewSourceExcerpt {
+  id: string;
+  sourceType: SourceType;
+  rawText?: string;
+  occurredAt?: string;
+}
+
 export interface ReviewDto extends ReviewItem {
   relatedTitle?: string;
   opportunityId?: string;
+  sources: ReviewSourceExcerpt[];
 }
 
 export interface ReviewResolution {

@@ -25,7 +25,7 @@ import {
 import {
   acceptDueAt, deriveAmount, derivePriority, deriveState, type ReviewTrigger,
 } from "../rules/business.js";
-import { customerReviewOptions, resolveEntities } from "../rules/entity-resolution.js";
+import { customerReviewOptions, looksLikePersonName, resolveEntities } from "../rules/entity-resolution.js";
 import { LlmError } from "../ai/provider.js";
 import { audit } from "./audit.js";
 import { logEvent, type CoreContext } from "./context.js";
@@ -321,20 +321,6 @@ function applyExtraction(
     decide("OPPORTUNITY_RESOLUTION", "opportunity", target.id,
       { match: "PINNED", id: target.id }, { opportunityId: target.id },
       1, "AUTO_APPLIED", "案件画面からの取り込み (宛先指定)");
-    for (const p of resolution.unmatchedPersons) {
-      if (!p.name || p.confidence < 0.5) continue;
-      const person: CustomerPerson = {
-        id: newId(), accountId: account.id, displayName: p.name,
-        normalizedName: normalizeName(p.name),
-        email: p.email ? normalizeEmail(p.email) : undefined,
-        title: p.title ?? undefined,
-        phone: p.phone ?? undefined,
-        resolutionStatus: account.resolutionStatus === "UNRESOLVED" ? "UNRESOLVED" : "MANUAL",
-        createdAt: now, updatedAt: now,
-      };
-      ctx.repo.insertPerson(person);
-      app.createdPersonIds.push(person.id);
-    }
   } else if (noCompanySignal && personMentioned) {
     decide("ENTITY_RESOLUTION", "source_document", source.id,
       { method: resolution.method, personNames: x.entities.person_candidates.map(p => p.name) }, null,
@@ -421,22 +407,6 @@ function applyExtraction(
       }
     }
 
-    // Persons that did not match an existing record are created under the account.
-    for (const p of resolution.unmatchedPersons) {
-      if (!p.name || p.confidence < 0.5) continue;
-      const person: CustomerPerson = {
-        id: newId(), accountId: account.id, displayName: p.name,
-        normalizedName: normalizeName(p.name),
-        email: p.email ? normalizeEmail(p.email) : undefined,
-        title: p.title ?? undefined,
-        phone: p.phone ?? undefined,
-        resolutionStatus: account.resolutionStatus === "UNRESOLVED" ? "UNRESOLVED" : "MANUAL",
-        createdAt: now, updatedAt: now,
-      };
-      ctx.repo.insertPerson(person);
-      app.createdPersonIds.push(person.id);
-    }
-
     // Opportunity under that account.
     const openForAccount = account.resolutionStatus === "UNRESOLVED"
       ? [] : ctx.repo.listOpenOpportunitiesForAccount(account.id);
@@ -483,6 +453,51 @@ function applyExtraction(
     }
   }
   if (!opportunity || !account) throw new Error("applyExtraction: opportunity resolution failed");
+
+  // --- 1b. Persons mentioned that did not match an existing record ------------------------------
+  // A clearly-named, high-confidence mention is auto-created. A bare job title or department with
+  // no real name ("経営企画部長", "導入担当", "担当役員" — confidence alone doesn't catch these; the
+  // extractor is often quite sure someone was mentioned) is never auto-created and never offered as
+  // a one-click "register as new" choice, since there is no name to register (2026-09-28: two such
+  // mentions from one memo were auto-created verbatim as if "導入担当" and "担当役員" were names).
+  // It's still worth asking "is this one of your existing contacts?" when the account has any —
+  // otherwise (no name, no candidates to match against) there's nothing useful to ask.
+  for (const p of resolution.unmatchedPersons) {
+    const isRealName = looksLikePersonName(p.name);
+    if (isRealName && p.confidence >= 0.5) {
+      const person: CustomerPerson = {
+        id: newId(), accountId: account.id, displayName: p.name,
+        normalizedName: normalizeName(p.name),
+        email: p.email ? normalizeEmail(p.email) : undefined,
+        title: p.title ?? undefined,
+        phone: p.phone ?? undefined,
+        resolutionStatus: account.resolutionStatus === "UNRESOLVED" ? "UNRESOLVED" : "MANUAL",
+        createdAt: now, updatedAt: now,
+      };
+      ctx.repo.insertPerson(person);
+      app.createdPersonIds.push(person.id);
+      continue;
+    }
+    const candidates = ctx.repo.listPersonsForAccount(account.id).slice(0, 5);
+    if (!isRealName && candidates.length === 0) continue;
+    review({
+      type: "PERSON_AMBIGUOUS",
+      question: isRealName
+        ? `メモに出てきた「${p.name}」は、${account.displayName}の新しい担当者ですか？ それとも既存の担当者と同じ人ですか？`
+        : `メモで役職・担当として触れられた方(「${p.name}」)は、${account.displayName}の既存の担当者と同じ人ですか？ (実名が本文にないため新規登録はできません)`,
+      options: [
+        ...candidates.map(c => ({
+          id: `person:${c.id}`, label: c.title ? `${c.displayName} (${c.title})` : c.displayName,
+          value: { personId: c.id },
+        })),
+        ...(isRealName ? [{
+          id: "new", label: `新しい担当者として登録 (${p.name})`,
+          value: { newPerson: true, name: p.name, title: p.title ?? null, email: p.email ?? null, phone: p.phone ?? null },
+        }] : []),
+        { id: "none", label: "該当する担当者はいない", value: {} },
+      ],
+    }, "customer_account", account.id);
+  }
 
   // --- 2. Activity (fact record; append-only) --------------------------------------------------
   const occurredAt = isIsoDateTime(x.activity.occurred_at)

@@ -3,10 +3,10 @@ import { useMemo, useState } from "react";
 import type { JsonValue, ReviewDto, SalesManagementApi, WhoAmI } from "../../src/management-types";
 import { useApiAction, useAsyncData } from "../api";
 import { AiAttribution } from "../components/AiAttribution";
-import { ReviewStatusBadge } from "../components/Badges";
+import { Badge, ReviewStatusBadge } from "../components/Badges";
 import { ReviewCard } from "../components/ReviewCard";
 import { formatDateTime } from "../format";
-import { REVIEW_TYPE_LABEL } from "../labels";
+import { REVIEW_TYPE_LABEL, SOURCE_TYPE_LABEL } from "../labels";
 
 type Tab = "OPEN" | "RESOLVED" | "DISMISSED";
 const TABS: { key: Tab; label: string }[] = [
@@ -33,6 +33,8 @@ export default function ReviewPage({
   const runAction = useApiAction();
   const { loading, error, data, reload } = useAsyncData<ReviewDto[]>(() => api.listReviews(), [api]);
   const [tab, setTab] = useState<Tab>("OPEN");
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const detail = useMemo(() => (data ?? []).find((review) => review.id === detailId) ?? null, [data, detailId]);
 
   const refresh = () => {
     reload();
@@ -114,12 +116,67 @@ export default function ReviewPage({
                 onResolve={(optionId, input) => resolveReview(review.id, optionId, input)}
                 onDismiss={() => dismissReview(review.id)}
                 onOpenOpportunity={review.opportunityId ? () => onOpenOpportunity(review.opportunityId!) : undefined}
+                onOpenDetail={() => setDetailId(review.id)}
               />
             ))}
           </div>
         ) : (
           <ResolvedList reviews={filtered} timezone={timezone} onOpenOpportunity={onOpenOpportunity} />
         )}
+      </div>
+
+      {detail && <ReviewDetailPanel review={detail} timezone={timezone} onClose={() => setDetailId(null)} />}
+    </div>
+  );
+}
+
+/** Read-only side panel showing the source text (メモ) a review was generated from. */
+function ReviewDetailPanel({
+  review,
+  timezone,
+  onClose,
+}: {
+  review: ReviewDto;
+  timezone: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-30 flex justify-end" role="dialog" aria-modal="true">
+      <button
+        type="button"
+        aria-label="閉じる"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/20"
+      />
+      <div className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-kumo-line bg-kumo-base px-5 py-6 shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Badge label={REVIEW_TYPE_LABEL[review.type]} tone="warning" />
+            <p className="mt-1.5 text-sm font-medium text-kumo-default">{review.question}</p>
+            {review.relatedTitle && <p className="mt-0.5 text-xs text-kumo-subtle">{review.relatedTitle}</p>}
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-sm text-kumo-link hover:underline">
+            閉じる
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {review.sources.length === 0 ? (
+            <p className="text-sm text-kumo-subtle">元の入力が見つかりませんでした。</p>
+          ) : (
+            review.sources.map((source) => (
+              <div key={source.id} className="rounded-lg border border-kumo-line bg-kumo-elevated p-3">
+                <div className="flex items-center justify-between gap-2 text-xs text-kumo-subtle">
+                  <span>{SOURCE_TYPE_LABEL[source.sourceType]}</span>
+                  {source.occurredAt && <span>{formatDateTime(source.occurredAt, timezone)}</span>}
+                </div>
+                <p className="mt-1.5 whitespace-pre-wrap text-sm text-kumo-default">
+                  {source.rawText ?? "（本文なし）"}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

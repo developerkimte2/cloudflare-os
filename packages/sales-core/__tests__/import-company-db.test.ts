@@ -62,6 +62,22 @@ describe("importCompanyDb (企業DB連携 from a Sansan-style sheet)", () => {
     expect(svc.repo.getAccount(existing.id)!.industry).toBe("情報通信業");
   });
 
+  it("still matches an existing account whose stored normalized_name has drifted from its displayName (e.g. legacy data written before suffix-stripping was applied), instead of creating a duplicate", () => {
+    const svc = makeService(new FakeLlmProvider([]), NOW);
+    const admin = makeUser(svc.repo, "ADMIN");
+    const existing = makeAccount(svc.repo, { displayName: "合同会社ひまわり工房" });
+    // Simulate the historical bug directly: a normalized_name stored verbatim (legal suffix intact)
+    // instead of run through normalizeName(). repo.insertAccount() itself now always recomputes it
+    // correctly, so this has to bypass that via a raw update to reproduce the corrupted state.
+    svc.repo.db.run("UPDATE customer_accounts SET normalized_name = ? WHERE id = ?", "合同会社ひまわり工房", existing.id);
+
+    const csv = [HEADER, row({ 会社名: "合同会社ひまわり工房", 業種: "小売業" })].join("\n");
+    const result = svc.importCompanyDb({ userId: admin.id }, csv);
+
+    expect(result).toMatchObject({ accountsCreated: 0, accountsUpdated: 1 });
+    expect(svc.repo.getAccount(existing.id)!.industry).toBe("小売業");
+  });
+
   it("two rows for the same 法人番号 create one account with two persons", () => {
     const svc = makeService(new FakeLlmProvider([]), NOW);
     const admin = makeUser(svc.repo, "ADMIN");
