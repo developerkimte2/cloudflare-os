@@ -14,6 +14,7 @@ import {
   migrate, morningBriefMessageHash, newId, nowIso, processPending, systemClock, toCsvExportUrl,
   MORNING_BRIEF_NOTIFICATION_TYPE,
   type AccountPatch, type AIContextSnapshot, type Actor, type AnswerResult, type AuditLog,
+  type BulkImportPayload, type BulkImportResult,
   type CaptureOptions, type CaptureResult, type Commitment, type CompanyDbSyncResult,
   type ConfigDto, type CoreContext,
   type CustomerAccount, type CustomerDetail, type CustomerPerson, type ManagerSummary,
@@ -105,6 +106,16 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
       slack: describeSlack(this.env),
       transcription: describeTranscription(this.env),
     };
+  }
+
+  /**
+   * ADMIN only, one-time migration tool (not exposed in the app UI). See
+   * `SalesService.adminBulkImport` for what it does; the `caller.isAdmin` check here is the
+   * Cloudflare OS deployment admin, on top of the Sales OS ADMIN role check inside the service.
+   */
+  async adminBulkImport(caller: Caller, payload: BulkImportPayload): Promise<BulkImportResult> {
+    if (!caller.isAdmin) throw new Error("一括インポートは管理者のみ実行できます");
+    return this.#service.adminBulkImport(this.#actor(caller), payload);
   }
 
   /** ADMIN only. See `SalesManagementApi.sendSlackTest`. */

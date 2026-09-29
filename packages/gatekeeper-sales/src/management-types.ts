@@ -7,7 +7,8 @@
  * account is not yet bound to a Sales OS user, only `whoAmI()` and `register()` succeed.
  */
 import type {
-  AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, BulkImportPayload,
+  BulkImportResult, CaptureOptions, CaptureResult, Commitment,
   CompanyDbSyncResult,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
@@ -20,7 +21,8 @@ import type {
 } from "@gadgets/sales-core";
 
 export type {
-  AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, CaptureOptions, CaptureResult, Commitment,
+  AccountPatch, AccountSummary, AIContextSnapshot, AnswerResult, AuditLog, BulkImportPayload,
+  BulkImportResult, CaptureOptions, CaptureResult, Commitment,
   CompanyDbSyncResult,
   ConfigDto, CustomerAccount, CustomerDetail, CustomerPerson, JsonValue, LineItemInput, LineTotals,
   ManagerKpis, ManagerPerUserRow,
@@ -126,6 +128,12 @@ export interface SalesManagementApi {
    * and imports/updates customer_accounts and customer_persons from it.
    */
   syncCompanyDb(): Promise<CompanyDbSyncResult>;
+  /**
+   * ADMIN only, one-time migration tool (not linked from anywhere but the Settings page's admin
+   * section): inserts whole rows exported from another tenant verbatim, remapping every
+   * user-reference field to the calling admin. See `SalesService.adminBulkImport`.
+   */
+  adminBulkImport(payload: BulkImportPayload): Promise<BulkImportResult>;
   listAudit(entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]>;
 
   /** ADMIN only. Sends a fixed test message to the configured Slack channel; throws if unconfigured. */

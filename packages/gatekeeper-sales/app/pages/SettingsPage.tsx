@@ -1,7 +1,9 @@
 import { useKumoToastManager } from "@cloudflare/kumo";
 import type { RpcStub } from "capnweb";
-import { useEffect, useState } from "react";
-import type { CompanyDbSyncResult, ConfigDto, CustomerAccount, SalesManagementApi } from "../../src/management-types";
+import { useEffect, useRef, useState } from "react";
+import type {
+  BulkImportPayload, BulkImportResult, CompanyDbSyncResult, ConfigDto, CustomerAccount, SalesManagementApi,
+} from "../../src/management-types";
 import { errorMessage, useApiAction, useAsyncData } from "../api";
 import { ConfirmInline } from "../components/ConfirmInline";
 import { ProductTable } from "../components/ProductTable";
@@ -413,6 +415,12 @@ export default function SettingsPage({
         </Section>
       )}
 
+      {canAdminister && (
+        <Section title="一括インポート（移行用）">
+          <BulkImportSection api={api} />
+        </Section>
+      )}
+
       <div className="mt-6 flex justify-end">
         <button
           type="button"
@@ -542,6 +550,109 @@ function DuplicateAccountsSection({ api }: { api: RpcStub<SalesManagementApi> })
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * One-time migration tool: pastes or uploads a JSON `BulkImportPayload` (exported from another
+ * tenant, e.g. a local dev instance) and inserts it verbatim, keyed by id. Not linked from anywhere
+ * but this admin section -- there is no ongoing use for it once a tenant has its own real data.
+ */
+function BulkImportSection({ api }: { api: RpcStub<SalesManagementApi> }) {
+  const toasts = useKumoToastManager();
+  const [text, setText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<BulkImportResult>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const runImport = async () => {
+    let payload: BulkImportPayload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      toasts.add({ title: "JSON を解析できません", description: "貼り付けた内容を確認してください。", variant: "error" });
+      return;
+    }
+    setImporting(true);
+    setResult(undefined);
+    try {
+      const res = await api.adminBulkImport(payload);
+      setResult(res);
+      toasts.add({
+        title: "インポートしました",
+        description:
+          `顧客 ${res.accountsInserted}・担当者 ${res.personsInserted}・案件 ${res.opportunitiesInserted}・` +
+          `活動 ${res.activitiesInserted} 件などを登録しました。`,
+        variant: res.errors.length > 0 ? "info" : "success",
+      });
+    } catch (caught) {
+      toasts.add({ title: "インポートに失敗しました", description: errorMessage(caught), variant: "error" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-xs text-kumo-subtle">
+        別環境からエクスポートした JSON（BulkImportPayload 形式）を貼り付けるか、ファイルを選択して読み込みます。
+        id をそのまま使って挿入するため、既にこのテナントに存在する id とは衝突しません（新規テナントでの一度きりの移行を想定）。
+      </p>
+      <textarea
+        value={text}
+        onChange={(event) => setText(event.currentTarget.value)}
+        placeholder="{ &quot;accounts&quot;: [...], &quot;persons&quot;: [...], ... }"
+        rows={6}
+        className="w-full rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 font-mono text-xs text-kumo-default"
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) void file.text().then(setText);
+        }}
+      />
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="press rounded-lg border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint"
+        >
+          ファイルを選択
+        </button>
+        <button
+          type="button"
+          disabled={importing || !text.trim()}
+          onClick={() => void runImport()}
+          className="press rounded-lg bg-kumo-brand px-3.5 py-1.5 text-sm font-medium text-white hover:bg-kumo-brand-hover disabled:opacity-50"
+        >
+          {importing ? "インポート中…" : "インポート実行"}
+        </button>
+      </div>
+      {result && (
+        <div className="mt-1 rounded-lg border border-kumo-line bg-kumo-elevated px-3.5 py-3 text-sm text-kumo-default">
+          <p>
+            顧客 {result.accountsInserted}・担当者 {result.personsInserted}・元メモ {result.sourceDocumentsInserted}・
+            案件 {result.opportunitiesInserted}・活動 {result.activitiesInserted}・
+            次アクション {result.nextActionsInserted}・コミットメント {result.commitmentsInserted} 件を登録しました。
+          </p>
+          {result.errors.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs font-medium text-kumo-danger">エラー {result.errors.length} 件</p>
+              <ul className="mt-1 list-inside list-disc text-xs text-kumo-subtle">
+                {result.errors.map((e, i) => (
+                  <li key={i}>{e.entityType} {e.id}: {e.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

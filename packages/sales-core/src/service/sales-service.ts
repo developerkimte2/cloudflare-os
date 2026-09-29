@@ -4,7 +4,8 @@
  * here is synchronous except the steps that call the LLM.
  */
 import type {
-  AccountPatch, AccountSummary, Actor, AnswerResult, AttentionItem, CaptureOptions,
+  AccountPatch, AccountSummary, Actor, AnswerResult, AttentionItem,
+  BulkImportPayload, BulkImportResult, CaptureOptions,
   CaptureResult, CompanyDbSyncResult, ConfigDto,
   CustomerDetail, LineItemInput, ManagerPerUserRow, ManagerSummary, ManagerSummaryQuery,
   NextActionFilter, NextActionInput,
@@ -760,6 +761,58 @@ export class SalesService {
         entityType: "tenant", entityId: "tenant", after: result });
       return result;
     });
+  }
+
+  /**
+   * One-time admin migration: inserts whole rows exported from another tenant verbatim, preserving
+   * their ids so foreign keys (account_id, opportunity_id, contact_person_ids, ...) stay intact. Every
+   * user-reference field is remapped to the calling admin, since the source tenant's user ids mean
+   * nothing here. Row-level id collisions are collected as errors rather than aborting the batch, the
+   * same as importCompanyDb.
+   */
+  adminBulkImport(actor: Actor, payload: BulkImportPayload): BulkImportResult {
+    const user = this.requireUser(actor);
+    if (user.role !== "ADMIN") throw new AuthorizationError("一括インポートは管理者のみ実行できます");
+    const result: BulkImportResult = {
+      accountsInserted: 0, personsInserted: 0, sourceDocumentsInserted: 0, opportunitiesInserted: 0,
+      activitiesInserted: 0, nextActionsInserted: 0, commitmentsInserted: 0, errors: [],
+    };
+    const insertRow = <T extends { id: string }>(
+      entityType: string, rows: T[], insert: (row: T) => void, onOk: () => void,
+    ): void => {
+      for (const row of rows) {
+        try {
+          insert(row);
+          onOk();
+        } catch (err) {
+          result.errors.push({
+            entityType, id: row.id, message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    };
+    insertRow("customer_account", payload.accounts, a => this.repo.insertAccount(a),
+      () => result.accountsInserted++);
+    insertRow("customer_person", payload.persons, p => this.repo.insertPerson(p),
+      () => result.personsInserted++);
+    insertRow("source_document", payload.sourceDocuments,
+      s => this.repo.insertSource({ ...s, submittedByUserId: user.id }),
+      () => result.sourceDocumentsInserted++);
+    insertRow("opportunity", payload.opportunities,
+      o => this.repo.insertOpportunity({ ...o, ownerUserId: user.id, collaboratorUserIds: [] }),
+      () => result.opportunitiesInserted++);
+    insertRow("activity", payload.activities,
+      a => this.repo.insertActivity({ ...a, actorUserIds: [user.id] }),
+      () => result.activitiesInserted++);
+    insertRow("next_action", payload.nextActions,
+      a => this.repo.insertNextAction({ ...a, assignedUserId: user.id }),
+      () => result.nextActionsInserted++);
+    insertRow("commitment", payload.commitments,
+      c => this.repo.insertCommitment(c.ownerUserId ? { ...c, ownerUserId: user.id } : c),
+      () => result.commitmentsInserted++);
+    audit(this.ctx, { actorType: "USER", actorId: user.id, action: "BULK_IMPORTED",
+      entityType: "tenant", entityId: "tenant", after: result });
+    return result;
   }
 
   createPerson(actor: Actor, accountId: string, input: PersonInput): CustomerPerson {

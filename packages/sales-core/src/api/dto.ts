@@ -238,6 +238,36 @@ export interface CompanyDbSyncResult {
   errors: CompanyDbSyncError[];
 }
 
+/**
+ * A one-time, admin-only migration payload: whole rows exported from another tenant (e.g. a local
+ * dev instance), inserted verbatim with their original ids so foreign keys stay intact. Every
+ * user-reference field (ownerUserId, assignedUserId, actorUserIds, submittedByUserId) is remapped to
+ * the importing admin, since the source tenant's own user ids don't exist in this one.
+ */
+export interface BulkImportPayload {
+  accounts: CustomerAccount[];
+  persons: CustomerPerson[];
+  sourceDocuments: SourceDocument[];
+  opportunities: Opportunity[];
+  activities: Activity[];
+  nextActions: NextAction[];
+  commitments: Commitment[];
+}
+
+/** One row that couldn't be inserted (e.g. an id already present in this tenant). */
+export interface BulkImportError { entityType: string; id: string; message: string }
+
+export interface BulkImportResult {
+  accountsInserted: number;
+  personsInserted: number;
+  sourceDocumentsInserted: number;
+  opportunitiesInserted: number;
+  activitiesInserted: number;
+  nextActionsInserted: number;
+  commitmentsInserted: number;
+  errors: BulkImportError[];
+}
+
 export interface PersonInput {
   displayName: string;
   title?: string;
