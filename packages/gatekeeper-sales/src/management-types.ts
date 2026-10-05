@@ -16,7 +16,8 @@ import type {
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
   OpportunityFilter, OpportunityLineItem, OpportunityPatch, OpportunitySummary, PersonInput,
   PersonPatch, Period, PeriodPreset, Product, ProductInput, ProductPatch,
-  RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
+  RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument,
+  TenantResetResult, TodayAction,
   TodayView, UserDto,
 } from "@gadgets/sales-core";
 
@@ -30,7 +31,8 @@ export type {
   NextActionFilter, NextActionInput, NextActionPatch, NextActionSuggestion, OpportunityDetail,
   OpportunityFilter, OpportunityLineItem, OpportunityPatch, OpportunitySummary, PersonInput,
   PersonPatch, Period, PeriodPreset, Product, ProductInput, ProductPatch,
-  RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument, TodayAction,
+  RegisterIdentityInput, ReviewDto, ReviewResolution, SalesConfig, SourceDocument,
+  TenantResetResult, TodayAction,
   TodayView, UserDto,
 };
 
@@ -134,6 +136,18 @@ export interface SalesManagementApi {
    * user-reference field to the calling admin. See `SalesService.adminBulkImport`.
    */
   adminBulkImport(payload: BulkImportPayload): Promise<BulkImportResult>;
+  /**
+   * ADMIN only (Sales OS ADMIN and deployment admin): every row of the seven `BulkImportPayload`
+   * collections for the whole tenant, unfiltered by visibility, as a backup that `adminBulkImport`
+   * accepts back. See `SalesService.adminBulkExport`.
+   */
+  adminBulkExport(): Promise<BulkImportPayload>;
+  /**
+   * ADMIN only (Sales OS ADMIN and deployment admin): deletes the tenant's business data and keeps
+   * its setup (users, settings, products, audit log). `confirmation` must be exactly "RESET"; refused
+   * while a memo is still being processed. See `SalesService.adminResetTenant`.
+   */
+  adminResetTenant(confirmation: string): Promise<TenantResetResult>;
   listAudit(entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]>;
 
   /** ADMIN only. Sends a fixed test message to the configured Slack channel; throws if unconfigured. */

@@ -23,7 +23,7 @@ import {
   type OpportunityDetail, type OpportunityFilter, type OpportunityPatch, type OpportunitySummary,
   type LineItemInput, type PersonInput, type PersonPatch, type Product, type ProductInput,
   type ProductPatch, type RegisterIdentityInput, type ReviewDto, type ReviewResolution, type SalesConfig,
-  type SourceDocument, type TodayView, type UserDto, toUserDto,
+  type SourceDocument, type TenantResetResult, type TodayView, type UserDto, toUserDto,
 } from "@gadgets/sales-core";
 import { buildLlm, describeAi } from "./llm.js";
 import type { WhoAmI } from "./management-types.js";
@@ -116,6 +116,23 @@ export class SalesCoreDurableObject extends DurableObject<Cloudflare.Env> {
   async adminBulkImport(caller: Caller, payload: BulkImportPayload): Promise<BulkImportResult> {
     if (!caller.isAdmin) throw new Error("一括インポートは管理者のみ実行できます");
     return this.#service.adminBulkImport(this.#actor(caller), payload);
+  }
+
+  /** ADMIN only (deployment admin here, Sales OS ADMIN in the service). See `SalesService.adminBulkExport`. */
+  async adminBulkExport(caller: Caller): Promise<BulkImportPayload> {
+    if (!caller.isAdmin) throw new Error("エクスポートは管理者のみ実行できます");
+    return this.#service.adminBulkExport(this.#actor(caller));
+  }
+
+  /**
+   * ADMIN only (deployment admin here, Sales OS ADMIN in the service). See
+   * `SalesService.adminResetTenant`, which refuses while a memo is RECEIVED/PROCESSING so the
+   * alarm queue never runs against deleted rows. Nothing in this object caches business data in
+   * memory (the service's only cached state is the config, which lives in `settings` and survives).
+   */
+  async adminResetTenant(caller: Caller, confirmation: string): Promise<TenantResetResult> {
+    if (!caller.isAdmin) throw new Error("業務データの初期化は管理者のみ実行できます");
+    return this.#service.adminResetTenant(this.#actor(caller), confirmation);
   }
 
   /** ADMIN only. See `SalesManagementApi.sendSlackTest`. */

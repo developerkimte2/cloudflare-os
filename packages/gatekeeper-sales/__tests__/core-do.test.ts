@@ -193,6 +193,28 @@ describe("SalesCoreDurableObject (workerd + DO SQLite)", () => {
     });
   });
 
+  describe("adminBulkExport / adminResetTenant", () => {
+    it("rejects a caller who is not the deployment admin, even as a Sales OS ADMIN", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const caller = { accountId: "acct-1", isAdmin: false };
+      const user = await core.register(caller, { email: "kimura@example.com", displayName: "木村" });
+      expect(user.role).toBe("ADMIN");
+      await expect(core.adminBulkExport(caller)).rejects.toThrow(/管理者のみ/);
+      await expect(core.adminResetTenant(caller, "RESET")).rejects.toThrow(/管理者のみ/);
+    });
+
+    it("exports and resets an empty tenant for the deployment admin", async () => {
+      const core = env.SALES_CORE.getByName(`tenant-${crypto.randomUUID()}`);
+      const admin = { accountId: "acct-1", isAdmin: true };
+      await core.register(admin, { email: "kimura@example.com", displayName: "木村" });
+      const exported = await core.adminBulkExport(admin);
+      expect(exported.accounts).toEqual([]);
+      const reset = await core.adminResetTenant(admin, "RESET");
+      expect(reset.removed.every(r => r.count === 0)).toBe(true);
+      expect((await core.whoAmI(admin)).user?.role).toBe("ADMIN");
+    });
+  });
+
   describe("captureAsync + alarm (instant-accept queue)", () => {
     // captureAsync arms the alarm for `Date.now()` (fire ASAP), so under real workerd timers the
     // runtime's own background scheduler can win the race against an explicit runDurableObjectAlarm

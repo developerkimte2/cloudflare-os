@@ -3,6 +3,7 @@ import type { RpcStub } from "capnweb";
 import { useEffect, useRef, useState } from "react";
 import type {
   BulkImportPayload, BulkImportResult, CompanyDbSyncResult, ConfigDto, CustomerAccount, SalesManagementApi,
+  TenantResetResult,
 } from "../../src/management-types";
 import { errorMessage, useApiAction, useAsyncData } from "../api";
 import { ConfirmInline } from "../components/ConfirmInline";
@@ -416,8 +417,8 @@ export default function SettingsPage({
       )}
 
       {canAdminister && (
-        <Section title="一括インポート（移行用）">
-          <BulkImportSection api={api} />
+        <Section title="データ移行（エクスポート / インポート / 初期化）">
+          <DataMigrationSection api={api} />
         </Section>
       )}
 
@@ -550,6 +551,215 @@ function DuplicateAccountsSection({ api }: { api: RpcStub<SalesManagementApi> })
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Japanese labels for the export payload's collections, in display order. */
+const EXPORT_COLLECTION_LABELS: [keyof BulkImportPayload, string][] = [
+  ["accounts", "顧客"], ["persons", "担当者"], ["sourceDocuments", "元メモ"], ["opportunities", "案件"],
+  ["activities", "活動"], ["nextActions", "次アクション"], ["commitments", "コミットメント"],
+];
+
+/** Japanese labels for the tables a tenant reset clears. */
+const RESET_TABLE_LABELS: Record<TenantResetResult["removed"][number]["table"], string> = {
+  customer_accounts: "顧客", customer_persons: "担当者", opportunities: "案件",
+  opportunity_line_items: "明細", activities: "活動", next_actions: "次アクション",
+  commitments: "コミットメント", review_items: "確認事項", source_documents: "元メモ",
+  source_applications: "取り込み記録", ai_decisions: "AI 判断", ai_context_snapshots: "AI 状況要約",
+  notification_logs: "通知履歴", calendar_event_mirrors: "カレンダー予定",
+};
+
+/**
+ * Admin data migration: export (backup), import (migration in) and reset (clear test data before a
+ * real pilot). Export and reset share whether an export has been shown in this session, so the reset
+ * area can nudge the admin to back up first.
+ */
+function DataMigrationSection({ api }: { api: RpcStub<SalesManagementApi> }) {
+  const [exportShown, setExportShown] = useState(false);
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-kumo-default">エクスポート</h3>
+        <BulkExportSection api={api} onExported={() => setExportShown(true)} />
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-kumo-default">インポート</h3>
+        <BulkImportSection api={api} />
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-kumo-danger">初期化</h3>
+        <TenantResetSection api={api} exportShown={exportShown} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shows the whole tenant as `BulkImportPayload` JSON in a read-only textarea. The app runs in a
+ * sandboxed iframe without `allow-downloads`/`allow-popups`, so there is no file download: the admin
+ * selects (or, where the clipboard is permitted, copies) the text and saves it themselves.
+ */
+function BulkExportSection({ api, onExported }: { api: RpcStub<SalesManagementApi>; onExported: () => void }) {
+  const toasts = useKumoToastManager();
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<{ json: string; counts: [string, number][] }>();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const canCopy = typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function";
+
+  const runExport = async () => {
+    setExporting(true);
+    try {
+      const payload = await api.adminBulkExport();
+      setExported({
+        json: JSON.stringify(payload),
+        counts: EXPORT_COLLECTION_LABELS.map(([key, label]) => [label, payload[key].length]),
+      });
+      onExported();
+    } catch (caught) {
+      toasts.add({ title: "エクスポートに失敗しました", description: errorMessage(caught), variant: "error" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const selectAll = () => {
+    textareaRef.current?.focus();
+    textareaRef.current?.select();
+  };
+
+  const copy = async () => {
+    if (!exported) return;
+    try {
+      await navigator.clipboard.writeText(exported.json);
+      toasts.add({ title: "コピーしました", variant: "success" });
+    } catch (caught) {
+      toasts.add({
+        title: "コピーできませんでした",
+        description: `「全選択」してから手動でコピーしてください（${errorMessage(caught)}）`,
+        variant: "error",
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-xs text-kumo-subtle">
+        このテナントの顧客・担当者・元メモ・案件・活動・次アクション・コミットメントを、下の「インポート」でそのまま読み込める
+        JSON として表示します。表示された内容を全選択してコピーし、ファイルに保存してください（明細・確認事項・AI 要約は含まれません）。
+      </p>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={exporting}
+          onClick={() => void runExport()}
+          className="press rounded-lg bg-kumo-brand px-3.5 py-1.5 text-sm font-medium text-white hover:bg-kumo-brand-hover disabled:opacity-50"
+        >
+          {exporting ? "エクスポート中…" : "エクスポート"}
+        </button>
+      </div>
+      {exported && (
+        <>
+          <p className="text-xs text-kumo-default">
+            {exported.counts.map(([label, n]) => `${label} ${n}`).join("・")} 件
+          </p>
+          <textarea
+            ref={textareaRef}
+            readOnly
+            value={exported.json}
+            rows={6}
+            onFocus={(event) => event.currentTarget.select()}
+            className="w-full rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 font-mono text-xs text-kumo-default"
+          />
+          <div className="flex justify-end gap-2">
+            {canCopy && (
+              <button
+                type="button"
+                onClick={() => void copy()}
+                className="press rounded-lg border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint"
+              >
+                コピー
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={selectAll}
+              className="press rounded-lg border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint"
+            >
+              全選択
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Danger area: clears the tenant's business data and keeps its setup. Gated on typing RESET (the
+ * server checks the same string), and warns, without blocking, when no export was shown this session.
+ */
+function TenantResetSection({ api, exportShown }: { api: RpcStub<SalesManagementApi>; exportShown: boolean }) {
+  const toasts = useKumoToastManager();
+  const [confirmation, setConfirmation] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [result, setResult] = useState<TenantResetResult>();
+
+  const runReset = async () => {
+    setResetting(true);
+    setResult(undefined);
+    try {
+      const res = await api.adminResetTenant(confirmation);
+      setResult(res);
+      setConfirmation("");
+      toasts.add({ title: "業務データを削除しました", variant: "success" });
+    } catch (caught) {
+      toasts.add({ title: "初期化に失敗しました", description: errorMessage(caught), variant: "error" });
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-kumo-danger-tint bg-kumo-danger-tint px-3.5 py-3">
+      <p className="text-xs text-kumo-default">
+        試験運用のデータを消して本番運用を始めるための操作です。元に戻せません。
+      </p>
+      <ul className="list-inside list-disc text-xs text-kumo-subtle">
+        <li>削除するもの: 顧客・担当者・案件・明細・活動・次アクション・コミットメント・確認事項・元メモ・AI の判断と要約・通知履歴・カレンダー予定</li>
+        <li>残すもの: ユーザー・設定・商材マスタ・監査ログ</li>
+      </ul>
+      {!exportShown && (
+        <p className="text-xs font-medium text-kumo-warning">先にエクスポートしてバックアップを取ってください</p>
+      )}
+      <label className="block text-xs text-kumo-default">
+        確認のため <span className="font-mono font-semibold">RESET</span> と入力してください
+        <input
+          type="text"
+          value={confirmation}
+          onChange={(event) => setConfirmation(event.currentTarget.value)}
+          autoComplete="off"
+          spellCheck={false}
+          className="mt-1 block w-48 rounded-lg border border-kumo-line bg-kumo-base px-3 py-1.5 font-mono text-sm text-kumo-default"
+        />
+      </label>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={resetting || confirmation !== "RESET"}
+          onClick={() => void runReset()}
+          className="press rounded-lg bg-kumo-danger px-3.5 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        >
+          {resetting ? "削除中…" : "業務データを削除する"}
+        </button>
+      </div>
+      {result && (
+        <p className="text-xs text-kumo-default">
+          削除しました:{" "}
+          {result.removed.filter(r => r.count > 0).map(r => `${RESET_TABLE_LABELS[r.table]} ${r.count}`).join("・") ||
+            "削除対象のデータはありませんでした"}
+        </p>
+      )}
     </div>
   );
 }

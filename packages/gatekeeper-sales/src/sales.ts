@@ -30,7 +30,7 @@ import type {
   NextActionInput, NextActionPatch, OpportunityDetail, OpportunityFilter, OpportunityPatch,
   OpportunitySummary, PersonInput, PersonPatch, Product, ProductInput, ProductPatch,
   RegisterIdentityInput, ReviewDto, ReviewResolution,
-  SalesConfig, SourceDocument, TodayView, UserDto,
+  SalesConfig, SourceDocument, TenantResetResult, TodayView, UserDto,
 } from "@gadgets/sales-core";
 import type { SalesManagementApi, WhoAmI } from "./management-types.js";
 import type { SalesSession } from "./types.js";
@@ -513,6 +513,8 @@ export class SalesManagementApiImpl extends RpcTarget implements SalesManagement
   getConfig(): Promise<ConfigDto> { return this.core.getConfig(this.caller); }
   syncCompanyDb(): Promise<CompanyDbSyncResult> { return this.core.syncCompanyDb(this.caller); }
   adminBulkImport(payload: BulkImportPayload): Promise<BulkImportResult> { return this.core.adminBulkImport(this.caller, payload); }
+  adminBulkExport(): Promise<BulkImportPayload> { return this.core.adminBulkExport(this.caller); }
+  adminResetTenant(confirmation: string): Promise<TenantResetResult> { return this.core.adminResetTenant(this.caller, confirmation); }
   updateConfig(patch: Partial<SalesConfig>): Promise<ConfigDto> { return this.core.updateConfig(this.caller, patch); }
   listAudit(entityType?: string, entityId?: string, limit?: number): Promise<AuditLog[]> { return this.core.listAudit(this.caller, entityType, entityId, limit); }
   sendSlackTest(): Promise<void> { return this.core.sendSlackTest(this.caller); }
