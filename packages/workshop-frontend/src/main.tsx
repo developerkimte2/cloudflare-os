@@ -64,6 +64,12 @@ const MAX_BACKOFF_MS = 10000;
 const RECONNECT_PROBE_TIMEOUT_MS = 20000;
 const WAKE_PROBE_TIMEOUT_MS = 10000;
 const WAKE_PROBE_MIN_IDLE_MS = 15000;
+// An idle socket carries no traffic, and the edge closes it after roughly 60-75s (seen in a
+// background tab as "Peer closed WebSocket: 1006"), which forces a reconnect that remounts every
+// gatekeeper iframe. Chrome throttles hidden-tab timers to once a minute after 5 minutes, so 25s
+// still lands at least one ping per minute.
+const KEEPALIVE_INTERVAL_MS = 25_000;
+const KEEPALIVE_TIMEOUT_MS = 10_000;
 
 // Callbacks to call whenever `currentStub` or connection state is updated.
 const subscribers = new Set<() => void>();
@@ -181,6 +187,18 @@ window.addEventListener('online', () => void probeOnWake());
 // Current stub. handleBroken() will replace this on disconnect.
 installWorkshopErrorReporting()
 let currentStub = startConnection();
+
+// Keepalive. Never starts a reconnect itself: a dead socket already fires onRpcBroken ->
+// handleBroken, so failures are swallowed. `currentStub` is read at tick time, and a ping that
+// succeeds on a stub that has since been replaced is ignored.
+setInterval(() => {
+  if (isConnectionLost || probing) return;
+  const stub = currentStub;
+  withTimeout(stub.ping(), KEEPALIVE_TIMEOUT_MS).then(
+    // A proven round-trip is the same evidence probeOnWake records, so it may skip a redundant wake probe.
+    () => { if (currentStub === stub && !isConnectionLost) lastProvenAt = Date.now(); },
+    () => {});
+}, KEEPALIVE_INTERVAL_MS);
 
 const router = createRouter()
 applyStoredThemeMode()
