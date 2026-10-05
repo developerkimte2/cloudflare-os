@@ -126,6 +126,10 @@ export default function TodayPage({
   }
   if (!data) return null;
 
+  // `now` mixes due-today and overdue items (in due order); split so today's work shows first.
+  const todayActions = data.now.filter((item) => !item.overdue);
+  const overdueActions = data.now.filter((item) => item.overdue);
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <header>
@@ -157,7 +161,7 @@ export default function TodayPage({
 
       <NextStepBanner
         reviewCount={data.reviews.length}
-        first={data.now[0] ?? data.upcoming[0]}
+        first={todayActions[0] ?? data.upcoming[0] ?? overdueActions[0]}
         onOpenOpportunity={onOpenOpportunity}
       />
 
@@ -179,9 +183,18 @@ export default function TodayPage({
       )}
 
       <TodayActionSection
-        title="今やる"
-        actions={data.now}
+        title="今日"
+        actions={todayActions}
         collapseAfter={5}
+        timezone={timezone}
+        now={now}
+        onOpenOpportunity={onOpenOpportunity}
+        onUpdate={updateNextAction}
+      />
+      <TodayActionSection
+        title="期限超過"
+        actions={overdueActions}
+        collapsedByDefault
         timezone={timezone}
         now={now}
         onOpenOpportunity={onOpenOpportunity}
@@ -287,6 +300,7 @@ function TodayActionSection({
   title,
   actions,
   collapseAfter,
+  collapsedByDefault,
   timezone,
   now,
   onOpenOpportunity,
@@ -294,8 +308,10 @@ function TodayActionSection({
 }: {
   title: string;
   actions: TodayAction[];
-  /** Show only this many rows until the user asks for the rest (long overdue backlogs). */
+  /** Show only this many rows until the user asks for the rest (long backlogs). */
   collapseAfter?: number;
+  /** Start with no rows shown (a summary and a 表示する button instead); wins over `collapseAfter`. */
+  collapsedByDefault?: boolean;
   timezone: string;
   now: Date;
   onOpenOpportunity: (id: string) => void;
@@ -303,6 +319,24 @@ function TodayActionSection({
 }) {
   const [expanded, setExpanded] = useState(false);
   if (actions.length === 0) return null;
+  if (collapsedByDefault && !expanded) {
+    return (
+      <Section title={`${title} (${actions.length})`}>
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-kumo-line px-3 py-2.5">
+          <p className="text-sm text-kumo-subtle">
+            期限を過ぎたアクションが {actions.length} 件あります。
+          </p>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="press shrink-0 rounded-lg border border-kumo-line px-3 py-1.5 text-xs text-kumo-subtle hover:bg-kumo-tint"
+          >
+            表示する
+          </button>
+        </div>
+      </Section>
+    );
+  }
   const shown = collapseAfter && !expanded ? actions.slice(0, collapseAfter) : actions;
   return (
     <Section title={`${title} (${actions.length})`}>
