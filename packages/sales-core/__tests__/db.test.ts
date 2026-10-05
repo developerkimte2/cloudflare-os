@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { NodeSqliteExecutor } from "../src/db/node-sqlite.js";
 import { migrate, MIGRATIONS } from "../src/db/migrations.js";
 import { Repository } from "../src/db/repository.js";
-import * as T from "../src/db/tables.js";
 import { col, Table } from "../src/db/mapper.js";
 import type { CustomerAccount, Opportunity, User } from "../src/domain/types.js";
 import { newId } from "../src/domain/util.js";
