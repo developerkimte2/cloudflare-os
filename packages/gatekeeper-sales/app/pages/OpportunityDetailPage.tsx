@@ -499,7 +499,7 @@ function OpportunityHeader({
               onChange={(event) => setPhaseLabel(event.currentTarget.value)}
               className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
             >
-              <option value="">（未設定）</option>
+              <option value="">未設定</option>
               {/* A phase saved before it was removed from settings, or typed in before this became a dropdown -- kept selectable so saving doesn't silently wipe it. */}
               {phaseLabel && !phaseLabels.includes(phaseLabel) && <option value={phaseLabel}>{phaseLabel}</option>}
               {phaseLabels.map((label) => (
@@ -509,11 +509,15 @@ function OpportunityHeader({
               ))}
             </select>
           ) : (
-            <input
-              value={phaseLabel}
-              onChange={(event) => setPhaseLabel(event.currentTarget.value)}
-              className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
-            />
+            <>
+              <input
+                value={phaseLabel}
+                onChange={(event) => setPhaseLabel(event.currentTarget.value)}
+                placeholder="未設定"
+                className="h-8 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+              />
+              <p className="mt-1 text-xs text-kumo-subtle">設定 → フェーズ名を登録すると選択式になります</p>
+            </>
           )}
         </Field>
         <Field label={opportunity.hasLineItems ? "見込金額（明細合計から自動計算）" : "見込金額"}>
