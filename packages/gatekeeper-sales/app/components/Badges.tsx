@@ -56,7 +56,7 @@ export function OpportunityStatusBadge({
     : "AI はまだこの案件の動きを判定していません（記録が少ないか、判断に自信がない状態です）";
   return (
     <span title={hint} className="inline-flex">
-      <Badge label={`${LIFECYCLE_LABEL[lifecycleState]}（${judged ? "AI判定済" : "AI未判定"}）`} tone={tone} />
+      <Badge label={judged ? LIFECYCLE_LABEL[lifecycleState] : `${LIFECYCLE_LABEL[lifecycleState]}（AI未判定）`} tone={tone} />
     </span>
   );
 }
