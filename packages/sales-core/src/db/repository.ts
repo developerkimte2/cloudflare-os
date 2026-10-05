@@ -12,6 +12,31 @@ import { normalizeEmail, normalizeName } from "../domain/util.js";
 import type { SqlExecutor, SqlValue } from "./sql.js";
 import * as T from "./tables.js";
 
+/**
+ * The tables holding a tenant's business data, in foreign-key-safe deletion order (children first).
+ * Everything not listed (users, external_identities, settings, products, audit_logs,
+ * schema_migrations) is the tenant's setup and survives a reset.
+ */
+export const BUSINESS_DATA_TABLES = [
+  "source_applications",
+  "opportunity_line_items",
+  "ai_context_snapshots",
+  "ai_decisions",
+  "review_items",
+  "commitments",
+  "next_actions",
+  "activities",
+  "calendar_event_mirrors",
+  "notification_logs",
+  "opportunities",
+  "customer_persons",
+  "customer_accounts",
+  "source_documents",
+] as const;
+
+/** One table cleared by a tenant reset. */
+export type BusinessDataTable = typeof BUSINESS_DATA_TABLES[number];
+
 export class Repository {
   constructor(readonly db: SqlExecutor) {}
 
@@ -677,6 +702,49 @@ export class Repository {
     return T.commitments.select(this.db,
       "WHERE status IN ('OPEN','OVERDUE') AND due_at IS NOT NULL AND due_at < ? ORDER BY due_at LIMIT ?",
       before, limit);
+  }
+
+  // ---- whole-tenant export / reset (admin migration tools) -------------------------------------
+  // Unbounded on purpose: an export that silently truncated at a list limit would be a lossy backup.
+
+  listAllAccounts(): CustomerAccount[] {
+    return T.customerAccounts.select(this.db, "ORDER BY created_at, id");
+  }
+
+  listAllPersons(): CustomerPerson[] {
+    return T.customerPersons.select(this.db, "ORDER BY created_at, id");
+  }
+
+  listAllSources(): SourceDocument[] {
+    return T.sourceDocuments.select(this.db, "ORDER BY received_at, id");
+  }
+
+  listAllOpportunities(): Opportunity[] {
+    return T.opportunities.select(this.db, "ORDER BY created_at, id");
+  }
+
+  listAllActivities(): Activity[] {
+    return T.activities.select(this.db, "ORDER BY created_at, id");
+  }
+
+  listAllNextActions(): NextAction[] {
+    return T.nextActions.select(this.db, "ORDER BY created_at, id");
+  }
+
+  listAllCommitments(): Commitment[] {
+    return T.commitments.select(this.db, "ORDER BY created_at, id");
+  }
+
+  /**
+   * Deletes every row of every `BUSINESS_DATA_TABLES` table (children before parents, so foreign
+   * keys hold at each step) and returns how many rows each held. Callers wrap this in a transaction.
+   */
+  clearBusinessData(): { table: BusinessDataTable; count: number }[] {
+    return BUSINESS_DATA_TABLES.map(table => {
+      const count = Number(this.db.one<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0);
+      this.db.run(`DELETE FROM ${table}`);
+      return { table, count };
+    });
   }
 
   // ---- settings --------------------------------------------------------------------------------

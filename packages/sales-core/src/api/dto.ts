@@ -11,6 +11,7 @@ import type {
 import type { LineTotals } from "../rules/money.js";
 import type { Period, PeriodPreset } from "../rules/period.js";
 import type { SalesConfig } from "../rules/config.js";
+import type { BusinessDataTable } from "../db/repository.js";
 
 /** Who is calling. Resolved by the adapter from its own identity mechanism. */
 export interface Actor {
@@ -266,6 +267,15 @@ export interface BulkImportResult {
   nextActionsInserted: number;
   commitmentsInserted: number;
   errors: BulkImportError[];
+}
+
+/**
+ * What an admin tenant reset removed: one entry per business-data table (in the order they were
+ * cleared) with the number of rows it held. Setup tables (users, identities, settings, products,
+ * audit log) are never listed because they are never cleared.
+ */
+export interface TenantResetResult {
+  removed: { table: BusinessDataTable; count: number }[];
 }
 
 export interface PersonInput {

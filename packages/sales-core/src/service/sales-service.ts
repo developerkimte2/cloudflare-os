@@ -11,7 +11,7 @@ import type {
   NextActionFilter, NextActionInput,
   NextActionPatch, NextActionSuggestion, OpportunityDetail, OpportunityFilter, OpportunityPatch,
   OpportunitySummary, PersonInput, PersonPatch, ProductInput, ProductPatch, RegisterIdentityInput,
-  ReviewDto, ReviewResolution, TodayAction, TodayView, UserDto,
+  ReviewDto, ReviewResolution, TenantResetResult, TodayAction, TodayView, UserDto,
 } from "../api/dto.js";
 import { toUserDto } from "../api/dto.js";
 import type {
@@ -813,6 +813,56 @@ export class SalesService {
     audit(this.ctx, { actorType: "USER", actorId: user.id, action: "BULK_IMPORTED",
       entityType: "tenant", entityId: "tenant", after: result });
     return result;
+  }
+
+  /**
+   * Admin backup: every row of the seven `BulkImportPayload` collections for the whole tenant,
+   * unfiltered by visibility, in the exact shape `adminBulkImport` accepts, so an export fed into an
+   * empty tenant reproduces it (user references aside, which the import remaps). Line items, reviews,
+   * AI artefacts and undo records are not part of that payload and so are not exported.
+   */
+  adminBulkExport(actor: Actor): BulkImportPayload {
+    const user = this.requireUser(actor);
+    if (user.role !== "ADMIN") throw new AuthorizationError("エクスポートは管理者のみ実行できます");
+    const payload: BulkImportPayload = {
+      accounts: this.repo.listAllAccounts(),
+      persons: this.repo.listAllPersons(),
+      sourceDocuments: this.repo.listAllSources(),
+      opportunities: this.repo.listAllOpportunities(),
+      activities: this.repo.listAllActivities(),
+      nextActions: this.repo.listAllNextActions(),
+      commitments: this.repo.listAllCommitments(),
+    };
+    audit(this.ctx, {
+      actorType: "USER", actorId: user.id, action: "BULK_EXPORTED", entityType: "tenant", entityId: "tenant",
+      after: Object.fromEntries(Object.entries(payload).map(([key, rows]) => [key, rows.length])),
+    });
+    return payload;
+  }
+
+  /**
+   * Admin reset before a real pilot: deletes the tenant's business data (`BUSINESS_DATA_TABLES`)
+   * and keeps its setup (users, identities, settings, products, audit log). `confirmation` must be
+   * the literal "RESET". Refused while any memo is still RECEIVED or PROCESSING, since the alarm
+   * queue (or an in-flight LLM call) would then try to apply an extraction to deleted rows.
+   */
+  adminResetTenant(actor: Actor, confirmation: string): TenantResetResult {
+    const user = this.requireUser(actor);
+    if (user.role !== "ADMIN") throw new AuthorizationError("業務データの初期化は管理者のみ実行できます");
+    if (confirmation !== "RESET") throw new Error("確認のため RESET と入力してください");
+    return this.repo.transaction(() => {
+      const pending = (["RECEIVED", "PROCESSING"] as const)
+        .some(status => this.repo.listSourcesByStatus(status, 1).length > 0);
+      if (pending) {
+        throw new Error("処理待ち・処理中のメモがあるため初期化できません。処理が終わってから再度実行してください。");
+      }
+      const result: TenantResetResult = { removed: this.repo.clearBusinessData() };
+      audit(this.ctx, {
+        actorType: "USER", actorId: user.id, action: "TENANT_RESET", entityType: "tenant", entityId: "tenant",
+        after: Object.fromEntries(result.removed.map(r => [r.table, r.count])),
+      });
+      return result;
+    });
   }
 
   createPerson(actor: Actor, accountId: string, input: PersonInput): CustomerPerson {
