@@ -201,7 +201,7 @@ export default function TodayPage({
         onUpdate={updateNextAction}
       />
       <TodayActionSection
-        title="今日・今週"
+        title="今週中（明日以降）"
         actions={data.upcoming}
         timezone={timezone}
         now={now}
